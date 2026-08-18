@@ -1,8 +1,9 @@
-import { parseFile } from "./ast.js";
-import { collect } from "./collect.js";
+import { createLocator, parseFile } from "./ast.js";
+import { collect, mightAnimate } from "./collect.js";
 import { runRules } from "./rules.js";
 import type {
   Finding,
+  FindingSpan,
   LintOptions,
   LintResult,
   Message,
@@ -13,6 +14,7 @@ import type {
 
 export type {
   Finding,
+  FindingSpan,
   LintOptions,
   LintResult,
   Message,
@@ -20,6 +22,8 @@ export type {
   RuleId,
   Severity,
 } from "./types.js";
+
+export { mightAnimate } from "./collect.js";
 
 export const RULE_IDS: RuleId[] = [
   "require-reduced-motion-guard",
@@ -30,6 +34,17 @@ export const RULE_IDS: RuleId[] = [
   "no-fast-flash",
   "no-autoplay-lottie",
 ];
+
+const RULE_ID_SET: ReadonlySet<string> = new Set<string>(RULE_IDS);
+const SEVERITIES: ReadonlySet<string> = new Set(["off", "warn", "error"]);
+
+export function isRuleId(value: unknown): value is RuleId {
+  return typeof value === "string" && RULE_ID_SET.has(value);
+}
+
+export function isSeverity(value: unknown): value is Severity {
+  return typeof value === "string" && SEVERITIES.has(value);
+}
 
 export const presets: Record<PresetName, Record<RuleId, Severity>> = {
   recommended: {
@@ -52,39 +67,66 @@ export const presets: Record<PresetName, Record<RuleId, Severity>> = {
   },
 };
 
-/** Maps byte offsets to 1 based line and column numbers. */
-function makeLocator(code: string) {
-  const lineStarts = [0];
-  for (let i = 0; i < code.length; i++) {
-    if (code.charCodeAt(i) === 10) lineStarts.push(i + 1);
-  }
-  return (offset: number) => {
-    let low = 0;
-    let high = lineStarts.length - 1;
-    while (low < high) {
-      const mid = (low + high + 1) >> 1;
-      if (lineStarts[mid]! <= offset) low = mid;
-      else high = mid - 1;
-    }
-    return { line: low + 1, column: offset - lineStarts[low]! + 1 };
+/**
+ * The parser already knows the line and column of every node, so the usual case
+ * needs no lookup at all. The locator is only consulted for a finding whose
+ * node carried no position data.
+ */
+function positionOf(finding: Finding, locate: ReturnType<typeof createLocator>): FindingSpan {
+  if (finding.span) return finding.span;
+  const start = locate(finding.start);
+  const end = locate(finding.end);
+  return {
+    start: finding.start,
+    end: finding.end,
+    startLine: start.line,
+    startColumn: start.column,
+    endLine: end.line,
+    endColumn: end.column,
   };
 }
 
-function toMessage(f: Finding, severity: "warn" | "error", locate: ReturnType<typeof makeLocator>): Message {
-  const start = locate(f.start);
-  const end = locate(f.end);
+function toMessage(
+  finding: Finding,
+  severity: "warn" | "error",
+  locate: ReturnType<typeof createLocator>,
+): Message {
+  const at = positionOf(finding, locate);
   return {
-    rule: f.rule,
+    rule: finding.rule,
     severity,
-    message: f.message,
-    wcag: f.wcag,
-    line: start.line,
-    column: start.column,
-    endLine: end.line,
-    endColumn: end.column,
-    source: f.source,
+    message: finding.message,
+    wcag: finding.wcag,
+    line: at.startLine,
+    column: at.startColumn,
+    endLine: at.endLine,
+    endColumn: at.endColumn,
+    source: finding.source,
   };
 }
+
+/** Applies preset and per-rule overrides, ignoring anything that is not a real setting. */
+function resolveSeverities(options: LintOptions): Record<RuleId, Severity> {
+  const presetName: PresetName = options.preset === "strict" ? "strict" : "recommended";
+  const severities = { ...presets[presetName] };
+  const overrides = options.rules;
+  if (overrides) {
+    for (const key of Object.keys(overrides) as RuleId[]) {
+      const value = overrides[key];
+      // An explicit `undefined` must not knock the preset value out.
+      if (isRuleId(key) && isSeverity(value)) severities[key] = value;
+    }
+  }
+  return severities;
+}
+
+const EMPTY_RESULT = (filename: string): LintResult => ({
+  filename,
+  messages: [],
+  errorCount: 0,
+  warningCount: 0,
+  guarded: false,
+});
 
 /**
  * Lints a single source file for animation accessibility problems.
@@ -95,44 +137,54 @@ function toMessage(f: Finding, severity: "warn" | "error", locate: ReturnType<ty
  */
 export function lint(code: string, options: LintOptions = {}): LintResult {
   const filename = options.filename ?? "input.tsx";
-  const severities: Record<RuleId, Severity> = {
-    ...presets[options.preset ?? "recommended"],
-    ...(options.rules ?? {}),
-  };
+
+  if (typeof code !== "string") {
+    return { ...EMPTY_RESULT(filename), parseError: "Source must be a string." };
+  }
+
+  // A file with no animation marker anywhere cannot produce a finding, and
+  // parsing is the expensive part. In a real repository most files land here.
+  if (options.prefilter !== false && !mightAnimate(code)) return EMPTY_RESULT(filename);
+
+  const severities = resolveSeverities(options);
 
   let ast;
   try {
     ast = parseFile(code, filename);
   } catch (error) {
     return {
-      filename,
-      messages: [],
-      errorCount: 0,
-      warningCount: 0,
-      guarded: false,
+      ...EMPTY_RESULT(filename),
       parseError: error instanceof Error ? error.message : String(error),
     };
   }
 
-  const context = collect(ast);
-  const findings = runRules(context);
-  const locate = makeLocator(code);
+  let context;
+  let findings;
+  try {
+    context = collect(ast);
+    findings = runRules(context);
+  } catch (error) {
+    // A file the analyser cannot handle is one lost file, not a lost run.
+    return {
+      ...EMPTY_RESULT(filename),
+      analysisError: error instanceof Error ? error.message : String(error),
+    };
+  }
 
+  const locate = createLocator(code);
   const messages: Message[] = [];
-  for (const f of findings) {
-    const severity = severities[f.rule];
-    if (severity === "off") continue;
-    // A guarded file still reports flash risk, which is why the rule marks itself.
-    messages.push(toMessage(f, severity === "warn" ? "warn" : "error", locate));
+  let errorCount = 0;
+  let warningCount = 0;
+
+  for (const finding of findings) {
+    const severity = severities[finding.rule];
+    if (severity !== "warn" && severity !== "error") continue; // "off" or unknown
+    messages.push(toMessage(finding, severity, locate));
+    if (severity === "error") errorCount++;
+    else warningCount++;
   }
 
   messages.sort((a, b) => a.line - b.line || a.column - b.column || a.rule.localeCompare(b.rule));
 
-  return {
-    filename,
-    messages,
-    errorCount: messages.filter((m) => m.severity === "error").length,
-    warningCount: messages.filter((m) => m.severity === "warn").length,
-    guarded: context.guarded,
-  };
+  return { filename, messages, errorCount, warningCount, guarded: context.guarded };
 }

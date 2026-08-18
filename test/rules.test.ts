@@ -232,8 +232,13 @@ describe("engine", () => {
   });
 
   it("reports a parse error instead of throwing", () => {
-    const result = lint("const = = =", { filename: "broken.ts" });
+    const result = lint("import gsap from 'gsap'; const = = =", { filename: "broken.ts" });
     expect(result.messages).toHaveLength(0);
+    expect(result.parseError ?? "").not.toBe("");
+  });
+
+  it("parses every file when the prefilter is switched off", () => {
+    const result = lint("const = = =", { filename: "broken.ts", prefilter: false });
     expect(result.parseError ?? "").not.toBe("");
   });
 

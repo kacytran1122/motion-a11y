@@ -1,4 +1,4 @@
-import { Node, getProp, isInfinity, isTrue, jsxAttrValue, numberValue } from "./ast.js";
+import { Node, booleanValue, getProp, isInfinity, numberValue, spanOf, stringValue } from "./ast.js";
 import type { AnimationSite, FileContext } from "./collect.js";
 import type { Finding } from "./types.js";
 
@@ -10,15 +10,20 @@ const FLASHY_PROPS = new Set([
   "backgroundImage",
   "color",
   "filter",
+  "backdropFilter",
   "visibility",
   "borderColor",
   "boxShadow",
+  "textShadow",
   "fill",
   "stroke",
 ]);
 
 /** Below this many milliseconds per cycle the animation flashes faster than 3 times a second. */
 const FLASH_CYCLE_MS = 333;
+
+/** WCAG 2.3.1 is about three flashes within any one second window. */
+const FLASH_COUNT_THRESHOLD = 3;
 
 /** WCAG 2.2.2 applies to moving content that runs longer than this. */
 const LONG_ANIMATION_MS = 5000;
@@ -27,40 +32,65 @@ function toMs(value: number, unit: "s" | "ms"): number {
   return unit === "s" ? value * 1000 : value;
 }
 
+/** Reads a transition option from wherever the library allows it to be written. */
+function option(site: AnimationSite, name: string): Node | null {
+  return (
+    getProp(site.config, name) ??
+    getProp(getProp(site.target, "transition"), name) ??
+    getProp(getProp(site.config, "transition"), name)
+  );
+}
+
 /** Duration of one cycle in milliseconds, when it can be read statically. */
 function durationMs(site: AnimationSite): number | null {
-  const fromConfig = numberValue(getProp(site.config, "duration"));
-  if (fromConfig !== null) return toMs(fromConfig, site.unit);
+  const explicit = numberValue(option(site, "duration"));
+  if (explicit !== null && explicit >= 0) return toMs(explicit, site.unit);
 
-  // Web Animations API allows a bare number as the options argument.
-  if (site.library === "waapi") {
-    const bare = numberValue(site.node.arguments?.[1]);
-    if (bare !== null) return bare;
-  }
-
-  // framer-motion allows the transition to sit inside the animate object.
-  const nested = numberValue(getProp(getProp(site.target, "transition"), "duration"));
-  if (nested !== null) return toMs(nested, site.unit);
+  // Call forms that take a bare duration: el.animate(frames, 300), gsap.to(el, 2, {}).
+  const bare = numberValue(site.durationNode);
+  if (bare !== null && bare >= 0) return toMs(bare, site.unit);
 
   return null;
 }
 
-/** True when the animation repeats forever. */
-function isEndless(site: AnimationSite): boolean {
-  const repeat = getProp(site.config, "repeat") ?? getProp(getProp(site.target, "transition"), "repeat");
-  if (isInfinity(repeat)) return true;
-  if (site.library === "gsap" && numberValue(repeat) === -1) return true;
-
-  const iterations = getProp(site.config, "iterations");
-  if (isInfinity(iterations)) return true;
-
+/**
+ * How many times the animation plays, counting the first pass.
+ * `Infinity` for endless, `null` when it cannot be read statically.
+ */
+function cycleCount(site: AnimationSite): number | null {
   if (site.library === "lottie") {
-    const loop = (site as any).loopValue ?? jsxAttrValue((site as any).loopAttr);
-    if (isTrue(loop)) return true;
-    // A bare `loop` JSX attribute means true.
-    if ((site as any).loopAttr && !(site as any).loopAttr.value) return true;
+    return site.lottie?.loop === true ? Number.POSITIVE_INFINITY : 1;
   }
-  return false;
+
+  // Web Animations API: `iterations` is the total count.
+  const iterations = getProp(site.config, "iterations");
+  if (iterations) {
+    if (isInfinity(iterations)) return Number.POSITIVE_INFINITY;
+    const value = numberValue(iterations);
+    if (value !== null) return value;
+    return null;
+  }
+
+  // framer-motion, motion and GSAP: `repeat` counts the *extra* passes.
+  const repeat = option(site, "repeat");
+  if (repeat) {
+    if (isInfinity(repeat)) return Number.POSITIVE_INFINITY;
+    const value = numberValue(repeat);
+    if (value === null) return null;
+    if (value < 0) return Number.POSITIVE_INFINITY; // GSAP uses -1 for endless
+    return value + 1;
+  }
+
+  return 1;
+}
+
+/** True when the animation reverses on each pass, which halves the flash rate. */
+function reverses(site: AnimationSite): boolean {
+  if (booleanValue(option(site, "yoyo")) === true) return true;
+  const repeatType = stringValue(option(site, "repeatType"));
+  if (repeatType === "reverse" || repeatType === "mirror") return true;
+  const direction = stringValue(getProp(site.config, "direction"));
+  return direction === "alternate" || direction === "alternate-reverse";
 }
 
 /** Names of the properties being animated, when they can be read statically. */
@@ -71,7 +101,7 @@ function animatedProps(site: AnimationSite): string[] {
     if (object?.type !== "ObjectExpression") return;
     for (const prop of object.properties) {
       if (prop.type !== "ObjectProperty" && prop.type !== "Property") continue;
-      const key = prop.key?.name ?? prop.key?.value;
+      const key = prop.computed ? null : (prop.key?.name ?? prop.key?.value);
       if (typeof key === "string") names.add(key);
     }
   };
@@ -91,11 +121,13 @@ function finding(
   message: string,
   extra: Partial<Finding> = {},
 ): Finding {
+  const span = spanOf(site.node);
   return {
     rule,
     message,
-    start: site.node.start ?? 0,
-    end: site.node.end ?? (site.node.start ?? 0) + 1,
+    start: span?.start ?? site.node.start ?? 0,
+    end: span?.end ?? site.node.end ?? 0,
+    span,
     source: site.library,
     ...extra,
   };
@@ -105,20 +137,24 @@ export function runRules(context: FileContext): Finding[] {
   const findings: Finding[] = [];
   const { guarded, hasPauseControl, sites } = context;
 
-  const animations = sites.filter((site) => !site.smoothScroll);
+  let firstAnimation: AnimationSite | null = null;
+  let animationCount = 0;
+  for (const site of sites) {
+    if (site.smoothScroll) continue;
+    animationCount++;
+    if (!firstAnimation) firstAnimation = site;
+  }
 
   // --- require-reduced-motion-guard -------------------------------------
   // Reported once per file. Repeating it for every call is noise, not signal.
-  if (!guarded && animations.length > 0) {
-    const first = animations[0]!;
-    const count = animations.length;
+  if (!guarded && firstAnimation) {
     findings.push(
       finding(
-        first,
+        firstAnimation,
         "require-reduced-motion-guard",
-        count === 1
-          ? `${first.label} animates without a reduced motion guard. Check useReducedMotion or a (prefers-reduced-motion: reduce) media query before animating.`
-          : `${count} animations in this file run without a reduced motion guard. First one is ${first.label}. Check useReducedMotion or a (prefers-reduced-motion: reduce) media query before animating.`,
+        animationCount === 1
+          ? `${firstAnimation.label} animates without a reduced motion guard. Check useReducedMotion or a (prefers-reduced-motion: reduce) media query before animating.`
+          : `${animationCount} animations in this file run without a reduced motion guard. First one is ${firstAnimation.label}. Check useReducedMotion or a (prefers-reduced-motion: reduce) media query before animating.`,
         { wcag: "2.3.3 Animation from Interactions" },
       ),
     );
@@ -141,16 +177,26 @@ export function runRules(context: FileContext): Finding[] {
     }
 
     const cycleMs = durationMs(site);
-    const endless = isEndless(site);
-    const props = animatedProps(site);
+    const cycles = cycleCount(site);
+    const endless = cycles === Number.POSITIVE_INFINITY;
 
     // --- no-fast-flash ---------------------------------------------------
     // A reduced motion guard does not silence this one. Users who never set
     // the preference are still exposed to the seizure risk.
-    if (endless && cycleMs !== null && cycleMs > 0 && cycleMs < FLASH_CYCLE_MS) {
-      const flashy = props.filter((name) => FLASHY_PROPS.has(name));
+    // A reversing repeat plays light -> dark -> light per two passes, so the
+    // period of one full flash is twice the declared duration.
+    const flashPeriodMs = cycleMs === null ? null : cycleMs * (reverses(site) ? 2 : 1);
+    const flashes = cycles === null ? null : reverses(site) ? cycles / 2 : cycles;
+    if (
+      flashPeriodMs !== null &&
+      flashPeriodMs > 0 &&
+      flashPeriodMs < FLASH_CYCLE_MS &&
+      flashes !== null &&
+      flashes >= FLASH_COUNT_THRESHOLD
+    ) {
+      const flashy = animatedProps(site).filter((name) => FLASHY_PROPS.has(name));
       if (flashy.length > 0) {
-        const perSecond = (1000 / cycleMs).toFixed(1);
+        const perSecond = (1000 / flashPeriodMs).toFixed(1);
         findings.push(
           finding(
             site,
@@ -175,21 +221,22 @@ export function runRules(context: FileContext): Finding[] {
     }
 
     // --- no-long-animation ------------------------------------------------
-    if (
-      cycleMs !== null &&
-      cycleMs > LONG_ANIMATION_MS &&
-      !guarded &&
-      !hasPauseControl
-    ) {
-      const seconds = (cycleMs / 1000).toFixed(1);
-      findings.push(
-        finding(
-          site,
-          "no-long-animation",
-          `${site.label} runs for ${seconds}s. Moving content over 5s needs a pause, stop or hide control.`,
-          { wcag: "2.2.2 Pause, Stop, Hide" },
-        ),
-      );
+    // Total run time, not one pass: `duration: 2, repeat: 5` is twelve seconds
+    // of movement. Endless animations are left to no-infinite-animation.
+    if (!endless && cycleMs !== null && cycles !== null && !guarded && !hasPauseControl) {
+      const totalMs = cycleMs * cycles;
+      if (totalMs > LONG_ANIMATION_MS) {
+        const seconds = (totalMs / 1000).toFixed(1);
+        const detail = cycles > 1 ? ` (${cycles} passes of ${(cycleMs / 1000).toFixed(1)}s)` : "";
+        findings.push(
+          finding(
+            site,
+            "no-long-animation",
+            `${site.label} runs for ${seconds}s${detail}. Moving content over 5s needs a pause, stop or hide control.`,
+            { wcag: "2.2.2 Pause, Stop, Hide" },
+          ),
+        );
+      }
     }
 
     // --- no-scroll-linked-animation ---------------------------------------
@@ -205,21 +252,18 @@ export function runRules(context: FileContext): Finding[] {
     }
 
     // --- no-autoplay-lottie ------------------------------------------------
-    if (site.library === "lottie" && !guarded) {
-      const autoplayValue = (site as any).autoplayValue;
-      const autoplayAttr = (site as any).autoplayAttr;
-      const explicitAutoplay =
-        isTrue(autoplayValue) || (autoplayAttr && (!autoplayAttr.value || isTrue(jsxAttrValue(autoplayAttr))));
-      if (explicitAutoplay) {
-        findings.push(
-          finding(
-            site,
-            "no-autoplay-lottie",
-            `${site.label} plays on load with no reduced motion guard. Give the user a way to start it, or skip the animation when motion is reduced.`,
-            { wcag: "2.2.2 Pause, Stop, Hide" },
-          ),
-        );
-      }
+    if (site.lottie && !guarded && site.lottie.autoplay === true) {
+      const because = site.lottie.implicit
+        ? " This player autoplays by default, so leaving `autoplay` off does not stop it."
+        : "";
+      findings.push(
+        finding(
+          site,
+          "no-autoplay-lottie",
+          `${site.label} plays on load with no reduced motion guard.${because} Give the user a way to start it, or skip the animation when motion is reduced.`,
+          { wcag: "2.2.2 Pause, Stop, Hide" },
+        ),
+      );
     }
   }
 
