@@ -1,0 +1,26 @@
+{
+  "name": "motion-a11y",
+  "version": "0.1.0",
+  "description": "Accessibility linter for animation code. Finds motion that can trigger vestibular disorders and seizures in Framer Motion, Motion, GSAP, Lottie and the Web Animations API.",
+  "keywords": ["accessibility","a11y","animation","prefers-reduced-motion","wcag","vestibular","framer-motion","gsap","lottie","linter"],
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": { "motion-a11y": "./dist/cli.js" },
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js", "require": "./dist/index.cjs" },
+    "./package.json": "./package.json"
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": { "@babel/parser": "^7.25.0" },
+  "devDependencies": { "@types/node": "^22.0.0", "tsup": "^8.0.0", "typescript": "^5.5.0", "vitest": "^2.0.0" },
+  "engines": { "node": ">=18" }
+}
