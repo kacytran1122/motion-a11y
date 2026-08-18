@@ -11,7 +11,7 @@ import { createRequire } from "node:module";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");
@@ -27,7 +27,9 @@ function check(name, fn) {
 console.log(`motion-a11y smoke test on Node ${process.version}`);
 
 // ---- ESM build -------------------------------------------------------------
-const esm = await import(join(root, "dist", "index.js"));
+// The ESM loader needs a URL, not a native path: on Windows an absolute path
+// looks like the unsupported URL scheme "d:".
+const esm = await import(pathToFileURL(join(root, "dist", "index.js")).href);
 
 check("esm build exports the public API", () => {
   assert.equal(typeof esm.lint, "function");
