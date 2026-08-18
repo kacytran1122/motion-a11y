@@ -1,0 +1,764 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>motion-a11y — the accessibility linter for animation code</title>
+<meta name="description" content="Nothing checks your animation code for accessibility. eslint reads JSX, stylelint reads CSS, axe reads the rendered page. motion-a11y reads the JavaScript, where Framer Motion, GSAP, Lottie and the Web Animations API live.">
+<meta name="theme-color" content="#131019">
+<meta property="og:type" content="website">
+<meta property="og:title" content="motion-a11y — the accessibility linter for animation code">
+<meta property="og:description" content="Catch seizure risks, unpausable loops and unguarded scroll effects before they ship. 7 rules, mapped to WCAG.">
+<meta property="og:url" content="https://motion-a11y.dev/">
+<meta name="twitter:card" content="summary">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --void:#131019;
+  --panel:#1B1724;
+  --panel-2:#221D2E;
+  --line:#2F2840;
+  --ink:#F1EDF8;
+  --muted:#9A92B0;
+  --dim:#6E6784;
+  --signal:#FFC24D;
+  --alarm:#FF5A5F;
+  --safe:#3ED9B0;
+  --violet:#9C7BFF;
+
+  --display:"Bricolage Grotesque",system-ui,sans-serif;
+  --body:"Instrument Sans",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,monospace;
+
+  --gutter:clamp(20px,5vw,64px);
+  --maxw:1180px;
+}
+
+*{box-sizing:border-box}
+html{scroll-behavior:auto}
+body{
+  margin:0;background:var(--void);color:var(--ink);
+  font-family:var(--body);font-size:17px;line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+/* Ambient grid, the graph paper an instrument is read against. */
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
+  background-size:64px 64px;opacity:.28;
+  mask-image:radial-gradient(circle at 50% 0%,#000 0%,transparent 72%);
+}
+main,header,footer{position:relative;z-index:1}
+
+a{color:inherit}
+h1,h2,h3{font-family:var(--display);font-weight:800;letter-spacing:-.03em;line-height:1.02;margin:0}
+p{margin:0}
+code,pre,.mono{font-family:var(--mono)}
+
+.wrap{max-width:var(--maxw);margin-inline:auto;padding-inline:var(--gutter)}
+.section{padding-block:clamp(64px,9vw,120px);border-top:1px solid var(--line)}
+.eyebrow{
+  font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;
+  color:var(--violet);display:flex;align-items:center;gap:10px;margin-bottom:22px;
+}
+.eyebrow::before{content:"";width:26px;height:1px;background:var(--violet)}
+.lede{color:var(--muted);font-size:clamp(17px,1.5vw,19px);max-width:62ch;margin-top:18px}
+
+:focus-visible{outline:2px solid var(--violet);outline-offset:3px;border-radius:3px}
+
+/* ---------- nav ---------- */
+header{position:sticky;top:0;z-index:50;background:rgba(19,16,25,.86);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+.nav{display:flex;align-items:center;gap:26px;height:62px}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--display);font-weight:800;font-size:17px;letter-spacing:-.02em;text-decoration:none}
+.mark{width:22px;height:22px;flex:none}
+.nav-links{display:flex;gap:22px;margin-left:auto;align-items:center}
+.nav-links a{color:var(--muted);text-decoration:none;font-size:14px;font-weight:500}
+.nav-links a:hover{color:var(--ink)}
+.nav-cta{
+  border:1px solid var(--line);padding:7px 14px;border-radius:999px;
+  color:var(--ink)!important;background:var(--panel);
+}
+.nav-cta:hover{border-color:var(--violet)}
+@media(max-width:860px){.nav-links a:not(.nav-cta){display:none}}
+
+/* ---------- hero ---------- */
+.hero{padding-block:clamp(56px,8vw,104px) clamp(40px,5vw,64px)}
+.hero h1{font-size:clamp(40px,7.2vw,80px)}
+.hero h1 .strike{
+  color:var(--muted);text-decoration:line-through;text-decoration-thickness:3px;
+  text-decoration-color:var(--alarm);
+}
+.hero-actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:34px}
+.btn{
+  display:inline-flex;align-items:center;gap:9px;padding:13px 22px;border-radius:999px;
+  font-weight:600;font-size:15px;text-decoration:none;border:1px solid transparent;
+}
+.btn-primary{background:var(--signal);color:#241A05}
+.btn-primary:hover{background:#FFD27A}
+.btn-ghost{border-color:var(--line);color:var(--ink);background:var(--panel)}
+.btn-ghost:hover{border-color:var(--violet)}
+
+.install{
+  margin-top:26px;display:inline-flex;align-items:center;gap:14px;
+  background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:11px 16px;
+  font-family:var(--mono);font-size:14px;color:var(--muted);
+}
+.install b{color:var(--ink);font-weight:500}
+.copy-btn{
+  background:none;border:1px solid var(--line);color:var(--muted);cursor:pointer;
+  font-family:var(--mono);font-size:11px;padding:4px 9px;border-radius:5px;
+}
+.copy-btn:hover{color:var(--ink);border-color:var(--violet)}
+
+/* ---------- meter (signature) ---------- */
+.meter{
+  margin-top:clamp(40px,6vw,68px);
+  border:1px solid var(--line);border-radius:16px;background:var(--panel);overflow:hidden;
+}
+.meter-head{
+  display:flex;flex-wrap:wrap;align-items:center;gap:12px;
+  padding:16px 22px;border-bottom:1px solid var(--line);background:var(--panel-2);
+}
+.meter-title{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
+.safe-note{
+  margin-left:auto;font-size:12px;color:var(--dim);display:flex;align-items:center;gap:7px;
+}
+.safe-note .dot{width:6px;height:6px;border-radius:50%;background:var(--safe)}
+.meter-body{display:grid;grid-template-columns:1.05fr .95fr}
+@media(max-width:900px){.meter-body{grid-template-columns:1fr}}
+.meter-left{padding:30px 22px 26px;border-right:1px solid var(--line)}
+@media(max-width:900px){.meter-left{border-right:none;border-bottom:1px solid var(--line)}}
+
+.readout{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.readout .value{font-family:var(--display);font-size:clamp(48px,8vw,72px);font-weight:800;letter-spacing:-.04em;line-height:1}
+.readout .unit{font-family:var(--mono);font-size:13px;color:var(--muted);letter-spacing:.1em}
+.verdict{
+  display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12px;
+  letter-spacing:.14em;text-transform:uppercase;padding:5px 11px;border-radius:999px;border:1px solid;
+}
+.verdict.ok{color:var(--safe);border-color:rgba(62,217,176,.4);background:rgba(62,217,176,.08)}
+.verdict.bad{color:var(--alarm);border-color:rgba(255,90,95,.45);background:rgba(255,90,95,.1)}
+
+.scale{margin-top:28px}
+.track{
+  position:relative;height:44px;border:1px solid var(--line);border-radius:8px;
+  background:var(--void);overflow:hidden;
+}
+.fill{position:absolute;inset:0 auto 0 0;width:0%;background:linear-gradient(90deg,rgba(62,217,176,.35),rgba(62,217,176,.6))}
+.fill.bad{background:linear-gradient(90deg,rgba(255,194,77,.3),rgba(255,90,95,.65))}
+.threshold{position:absolute;top:0;bottom:0;left:25%;width:2px;background:var(--alarm)}
+.threshold::after{
+  content:"3 Hz WCAG limit";position:absolute;top:-1px;left:8px;white-space:nowrap;
+  font-family:var(--mono);font-size:10px;color:var(--alarm);letter-spacing:.08em;
+}
+.ticks{display:flex;justify-content:space-between;margin-top:7px;font-family:var(--mono);font-size:10px;color:var(--dim)}
+
+.control{margin-top:26px}
+.control label{display:flex;justify-content:space-between;font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:10px}
+.control label b{color:var(--ink);font-weight:500}
+input[type=range]{width:100%;accent-color:var(--signal);height:22px}
+
+.meter-right{padding:26px 22px;display:flex;flex-direction:column;gap:18px;min-width:0}
+.snippet-label{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim)}
+pre{
+  margin:0;background:var(--void);border:1px solid var(--line);border-radius:10px;
+  padding:16px;overflow-x:auto;font-size:13px;line-height:1.7;color:#CFC7E0;
+}
+.tok-key{color:var(--violet)}
+.tok-num{color:var(--signal)}
+.tok-str{color:var(--safe)}
+.tok-com{color:var(--dim)}
+.out{
+  background:var(--void);border:1px solid var(--line);border-radius:10px;padding:16px;
+  font-family:var(--mono);font-size:12.5px;line-height:1.7;min-height:96px;
+}
+.out .lvl-error{color:var(--alarm)}
+.out .lvl-pass{color:var(--safe)}
+.out .rule{color:var(--dim)}
+
+/* ---------- stats ---------- */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border-block:1px solid var(--line)}
+@media(max-width:760px){.stats{grid-template-columns:repeat(2,1fr)}}
+.stat{background:var(--void);padding:28px var(--gutter)}
+.stat .n{font-family:var(--display);font-size:clamp(28px,4vw,40px);font-weight:800;letter-spacing:-.03em;line-height:1}
+.stat .l{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin-top:9px}
+
+/* ---------- table ---------- */
+.table-scroll{overflow-x:auto;margin-top:36px;border:1px solid var(--line);border-radius:14px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;min-width:720px;font-size:14.5px}
+th,td{text-align:left;padding:15px 18px;border-bottom:1px solid var(--line)}
+thead th{
+  font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--muted);background:var(--panel-2);font-weight:500;vertical-align:bottom;
+}
+thead th small{display:block;color:var(--dim);letter-spacing:0;text-transform:none;font-size:10.5px;margin-top:4px}
+tbody tr:last-child td{border-bottom:none}
+td:first-child{color:var(--muted)}
+.mine{background:rgba(156,123,255,.07)}
+thead th.mine{color:var(--violet)}
+.yes{color:var(--safe);font-weight:600}
+.no{color:var(--dim)}
+.part{color:var(--signal)}
+
+/* ---------- rules ---------- */
+.rules{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px;margin-top:40px}
+.rule-card{
+  border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:22px;
+  display:flex;flex-direction:column;gap:13px;
+}
+.rule-card.flag{border-color:rgba(255,90,95,.35)}
+.rule-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.rule-name{font-family:var(--mono);font-size:13.5px;color:var(--ink);font-weight:500}
+.sev{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;padding:3px 8px;border-radius:4px}
+.sev.error{color:var(--alarm);background:rgba(255,90,95,.12)}
+.sev.warn{color:var(--signal);background:rgba(255,194,77,.12)}
+.rule-card p{color:var(--muted);font-size:14.5px}
+.rule-card pre{font-size:12.5px;padding:13px}
+.wcag{font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:.06em;margin-top:auto;padding-top:4px}
+
+/* ---------- guards ---------- */
+.guards{display:grid;grid-template-columns:1.1fr 1fr;gap:34px;margin-top:36px;align-items:start}
+@media(max-width:880px){.guards{grid-template-columns:1fr}}
+.guard-list{list-style:none;padding:0;margin:0;border-top:1px solid var(--line)}
+.guard-list li{
+  padding:14px 0;border-bottom:1px solid var(--line);display:flex;gap:14px;align-items:baseline;
+  font-family:var(--mono);font-size:13.5px;
+}
+.guard-list li span{color:var(--muted);font-family:var(--body);font-size:14px}
+
+/* ---------- modes ---------- */
+.modes{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:40px}
+@media(max-width:940px){.modes{grid-template-columns:1fr}}
+.mode{border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:24px;display:flex;flex-direction:column;gap:14px}
+.mode-tag{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--violet)}
+.mode h3{font-size:20px;letter-spacing:-.02em}
+.mode p{color:var(--muted);font-size:14.5px}
+.mode pre{font-size:12.5px;margin-top:auto}
+
+/* ---------- limits ---------- */
+.limits{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-top:36px}
+.limit{background:var(--panel);padding:24px}
+.limit h4{font-family:var(--display);font-size:17px;font-weight:700;letter-spacing:-.02em;margin:0 0 8px}
+.limit p{color:var(--muted);font-size:14.5px}
+
+/* ---------- cta + footer ---------- */
+.cta{text-align:center;padding-block:clamp(70px,10vw,120px)}
+.cta h2{font-size:clamp(32px,5.4vw,56px)}
+.cta .hero-actions{justify-content:center}
+footer{border-top:1px solid var(--line);padding-block:52px;color:var(--dim);font-size:14px}
+.foot-grid{display:grid;grid-template-columns:1.6fr repeat(2,1fr);gap:34px}
+@media(max-width:780px){.foot-grid{grid-template-columns:1fr 1fr}}
+footer h5{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin:0 0 14px;font-weight:500}
+footer ul{list-style:none;padding:0;margin:0;display:grid;gap:9px}
+footer a{color:var(--dim);text-decoration:none}
+footer a:hover{color:var(--ink)}
+.foot-bottom{margin-top:44px;padding-top:22px;border-top:1px solid var(--line);display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;font-family:var(--mono);font-size:11.5px}
+
+/* Scroll reveal. Disabled entirely when the reader asks for less motion. */
+.reveal{opacity:0;transform:translateY(14px);transition:opacity .5s ease,transform .5s ease}
+.reveal.in{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){
+  .reveal{opacity:1;transform:none;transition:none}
+  *{animation:none!important;transition:none!important}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <a class="brand" href="#top">
+      <svg class="mark" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <rect x="1" y="1" width="22" height="22" rx="6" stroke="#9C7BFF" stroke-width="1.5"/>
+        <path d="M4 16 L8 16 L8 8 L12 8 L12 16 L16 16 L16 11 L20 11" stroke="#FFC24D" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      motion-a11y
+    </a>
+    <nav class="nav-links">
+      <a href="#meter">Flash meter</a>
+      <a href="#compare">Compare</a>
+      <a href="#rules">Rules</a>
+      <a href="#run">Install</a>
+      <a href="https://github.com/kacytran1122/motion-a11y">GitHub</a>
+      <a class="nav-cta" href="https://www.npmjs.com/package/motion-a11y">npm</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+
+<!-- ============ HERO ============ -->
+<section class="wrap hero">
+  <div class="eyebrow">Accessibility linting for animation code</div>
+  <h1>Your linter reads<br>your JSX. It never<br>reads your <span class="strike">motion</span>.</h1>
+  <p class="lede">
+    Animation is the one part of the front end that nothing checks. ESLint reads JSX attributes,
+    so it cannot see a GSAP timeline. Stylelint reads CSS, so it cannot see <code>repeat: Infinity</code>
+    inside a JavaScript object. Axe runs against a rendered page, so it cannot see an animation that
+    has not started yet.
+  </p>
+  <p class="lede">motion-a11y reads the JavaScript. That is where the animation actually lives.</p>
+
+  <div class="hero-actions">
+    <a class="btn btn-primary" href="#run">Start linting</a>
+    <a class="btn btn-ghost" href="https://github.com/kacytran1122/motion-a11y">Read the source</a>
+  </div>
+
+  <div class="install">
+    <span>$</span><b id="install-cmd">npm i -D motion-a11y</b>
+    <button class="copy-btn" id="copy" type="button">copy</button>
+  </div>
+
+  <!-- ---------- SIGNATURE: flash rate meter ---------- -->
+  <div class="meter" id="meter">
+    <div class="meter-head">
+      <span class="meter-title">Flash rate meter</span>
+      <span class="safe-note"><span class="dot"></span>Nothing on this page flashes. The rate is shown as a number and a bar, never played back.</span>
+    </div>
+
+    <div class="meter-body">
+      <div class="meter-left">
+        <div class="readout">
+          <span class="value" id="hz">8.3</span>
+          <span class="unit">FLASHES / SECOND</span>
+        </div>
+        <span class="verdict bad" id="verdict">Seizure risk</span>
+
+        <div class="scale">
+          <div class="track">
+            <div class="fill bad" id="fill"></div>
+            <div class="threshold"></div>
+          </div>
+          <div class="ticks"><span>0</span><span>3</span><span>6</span><span>9</span><span>12 Hz</span></div>
+        </div>
+
+        <div class="control">
+          <label for="dur">Animation duration<b><span id="durval">120</span> ms per cycle</b></label>
+          <input type="range" id="dur" min="60" max="1200" step="10" value="120"
+                 aria-describedby="hz" aria-label="Animation duration in milliseconds per cycle">
+        </div>
+      </div>
+
+      <div class="meter-right">
+        <div>
+          <div class="snippet-label">The code</div>
+          <pre id="code"></pre>
+        </div>
+        <div>
+          <div class="snippet-label">What motion-a11y says</div>
+          <div class="out" id="out"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ STATS ============ -->
+<section class="stats">
+  <div class="stat"><div class="n">7</div><div class="l">Rules</div></div>
+  <div class="stat"><div class="n">3 Hz</div><div class="l">Hard flash limit</div></div>
+  <div class="stat"><div class="n">305M</div><div class="l">Monthly installs covered</div></div>
+  <div class="stat"><div class="n">MIT</div><div class="l">Open source</div></div>
+</section>
+
+<!-- ============ WHY ============ -->
+<section class="wrap section" id="compare">
+  <div class="eyebrow reveal">Why a separate linter</div>
+  <h2 class="reveal" style="font-size:clamp(28px,4.4vw,46px)">Three good tools.<br>One gap between them.</h2>
+  <p class="lede reveal">
+    Every tool below is worth using. None of them can see animation code, because animation does not
+    live where they look. This table is the honest version: stylelint already covers CSS keyframes,
+    and motion-a11y does not try to take that over.
+  </p>
+
+  <div class="table-scroll reveal">
+    <table>
+      <thead>
+        <tr>
+          <th>What gets checked</th>
+          <th>eslint-plugin-jsx-a11y<small>181M / month</small></th>
+          <th>stylelint-a11y<small>103k / month</small></th>
+          <th>axe-core<small>260M / month</small></th>
+          <th class="mine">motion-a11y<small>reads the JS</small></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>CSS keyframes with no reduced motion guard</td>
+          <td class="no">No</td><td class="yes">Yes</td><td class="no">No</td><td class="mine no">Use stylelint</td>
+        </tr>
+        <tr>
+          <td>Framer Motion <code>animate</code> with no guard</td>
+          <td class="no">No</td><td class="no">No</td><td class="no">No</td><td class="mine yes">Yes</td>
+        </tr>
+        <tr>
+          <td>GSAP timeline with <code>repeat: -1</code></td>
+          <td class="no">No</td><td class="no">No</td><td class="no">No</td><td class="mine yes">Yes</td>
+        </tr>
+        <tr>
+          <td>Flash rate above 3 per second</td>
+          <td class="no">No</td><td class="no">No</td><td class="part">Manual review</td><td class="mine yes">Yes</td>
+        </tr>
+        <tr>
+          <td>Scroll linked motion, the top vestibular trigger</td>
+          <td class="no">No</td><td class="no">No</td><td class="no">No</td><td class="mine yes">Yes</td>
+        </tr>
+        <tr>
+          <td>Autoplaying Lottie on page load</td>
+          <td class="no">No</td><td class="no">No</td><td class="no">No</td><td class="mine yes">Yes</td>
+        </tr>
+        <tr>
+          <td><code>scrollIntoView({ behavior: "smooth" })</code></td>
+          <td class="no">No</td><td class="part">CSS only</td><td class="no">No</td><td class="mine yes">Yes</td>
+        </tr>
+        <tr>
+          <td>ARIA, roles, contrast, focus order</td>
+          <td class="yes">Yes</td><td class="part">Some</td><td class="yes">Yes</td><td class="mine no">Out of scope</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="lede reveal" style="margin-top:22px">
+    Framer Motion, Motion, GSAP and the Lottie players are installed over 300 million times a month
+    between them. Not one of those installs comes with a guardrail.
+  </p>
+</section>
+
+<!-- ============ RULES ============ -->
+<section class="wrap section" id="rules">
+  <div class="eyebrow reveal">The seven rules</div>
+  <h2 class="reveal" style="font-size:clamp(28px,4.4vw,46px)">Each one maps to a<br>real WCAG criterion.</h2>
+  <p class="lede reveal">
+    No style opinions and no taste calls. Every rule points at a published success criterion, so a
+    finding is something you can take to a product manager rather than an argument about polish.
+  </p>
+
+  <div class="rules">
+
+    <article class="rule-card reveal">
+      <div class="rule-top"><span class="rule-name">require-reduced-motion-guard</span><span class="sev error">error</span></div>
+      <p>The file animates but never checks whether the reader asked for less motion. Reported once per file, not once per call, so it stays readable.</p>
+      <pre><span class="tok-com">// no useReducedMotion anywhere in this file</span>
+&lt;motion.div <span class="tok-key">animate</span>={{ <span class="tok-key">x</span>: <span class="tok-num">200</span> }} /&gt;</pre>
+      <div class="wcag">WCAG 2.3.3 Animation from Interactions</div>
+    </article>
+
+    <article class="rule-card flag reveal">
+      <div class="rule-top"><span class="rule-name">no-fast-flash</span><span class="sev error">error</span></div>
+      <p>A repeating animation changes opacity or colour more than three times a second. This rule still fires in a file that has a reduced motion guard. See below for why.</p>
+      <pre>el.<span class="tok-key">animate</span>([{ <span class="tok-key">opacity</span>: <span class="tok-num">0</span> }, { <span class="tok-key">opacity</span>: <span class="tok-num">1</span> }], {
+  <span class="tok-key">duration</span>: <span class="tok-num">120</span>, <span class="tok-key">iterations</span>: Infinity
+});</pre>
+      <div class="wcag">WCAG 2.3.1 Three Flashes or Below Threshold</div>
+    </article>
+
+    <article class="rule-card reveal">
+      <div class="rule-top"><span class="rule-name">no-infinite-animation</span><span class="sev error">error</span></div>
+      <p>Motion that repeats forever with no way to stop it. Passes if the file exposes a pause control, because that is what the criterion actually asks for.</p>
+      <pre>gsap.<span class="tok-key">to</span>(<span class="tok-str">".pulse"</span>, {
+  <span class="tok-key">scale</span>: <span class="tok-num">1.1</span>, <span class="tok-key">repeat</span>: <span class="tok-num">-1</span>
+});</pre>
+      <div class="wcag">WCAG 2.2.2 Pause, Stop, Hide</div>
+    </article>
+
+    <article class="rule-card reveal">
+      <div class="rule-top"><span class="rule-name">no-scroll-linked-animation</span><span class="sev warn">warn</span></div>
+      <p>Motion tied to scroll position. About 35 percent of adults over 40 have some vestibular dysfunction, and scroll driven parallax is the strongest trigger on the web.</p>
+      <pre><span class="tok-key">const</span> { scrollYProgress } = <span class="tok-key">useScroll</span>();</pre>
+      <div class="wcag">WCAG 2.3.3 Animation from Interactions</div>
+    </article>
+
+    <article class="rule-card reveal">
+      <div class="rule-top"><span class="rule-name">no-long-animation</span><span class="sev warn">warn</span></div>
+      <p>An animation runs longer than five seconds with no pause control. Durations are read in the unit each library uses: seconds for GSAP and Motion, milliseconds for the Web Animations API.</p>
+      <pre>gsap.<span class="tok-key">to</span>(<span class="tok-str">".hero"</span>, { <span class="tok-key">x</span>: <span class="tok-num">400</span>, <span class="tok-key">duration</span>: <span class="tok-num">12</span> });</pre>
+      <div class="wcag">WCAG 2.2.2 Pause, Stop, Hide</div>
+    </article>
+
+    <article class="rule-card reveal">
+      <div class="rule-top"><span class="rule-name">no-smooth-scroll</span><span class="sev warn">warn</span></div>
+      <p>A smooth scroll request with no fallback. Catches the options object and the property assignment, including when the call sits in the middle of a chain.</p>
+      <pre>document.<span class="tok-key">querySelector</span>(<span class="tok-str">"#top"</span>)
+  .<span class="tok-key">scrollIntoView</span>({ <span class="tok-key">behavior</span>: <span class="tok-str">"smooth"</span> });</pre>
+      <div class="wcag">WCAG 2.3.3 Animation from Interactions</div>
+    </article>
+
+    <article class="rule-card reveal">
+      <div class="rule-top"><span class="rule-name">no-autoplay-lottie</span><span class="sev warn">warn</span></div>
+      <p>A Lottie player starts on load. Covers the React components and <code>lottie-web</code>'s <code>loadAnimation</code>, including a bare <code>autoplay</code> attribute.</p>
+      <pre>&lt;Lottie <span class="tok-key">animationData</span>={data} loop autoplay /&gt;</pre>
+      <div class="wcag">WCAG 2.2.2 Pause, Stop, Hide</div>
+    </article>
+
+    <article class="rule-card reveal" style="border-style:dashed">
+      <div class="rule-top"><span class="rule-name">Two presets</span></div>
+      <p><code>recommended</code> is the default and mixes errors with warnings. <code>strict</code> makes every rule an error. Any single rule can be turned off or changed.</p>
+      <pre>motion-a11y src <span class="tok-key">--preset</span> strict
+motion-a11y src <span class="tok-key">--rule</span> no-smooth-scroll=off</pre>
+      <div class="wcag">Run motion-a11y --rules to print the table</div>
+    </article>
+
+  </div>
+</section>
+
+<!-- ============ FLASH RULE EXPLAINER ============ -->
+<section class="wrap section">
+  <div class="eyebrow reveal">One deliberate exception</div>
+  <h2 class="reveal" style="font-size:clamp(26px,4vw,42px);max-width:20ch">The flash rule ignores your reduced motion guard.</h2>
+  <p class="lede reveal">
+    Every other rule goes quiet once the file respects the reader's motion preference. <code>no-fast-flash</code>
+    does not, and that is on purpose.
+  </p>
+  <p class="lede reveal">
+    Most people who are photosensitive have never opened their operating system settings and switched
+    reduced motion on. Many do not know the setting exists. A seizure risk is not a preference to
+    respect, so the rule asks you to fix the flash rate itself rather than hide it behind a media
+    query. If you disagree for a specific file, turn the rule off explicitly. That is a decision
+    somebody made, which is the point.
+  </p>
+</section>
+
+<!-- ============ GUARDS ============ -->
+<section class="wrap section">
+  <div class="eyebrow reveal">Guard detection</div>
+  <h2 class="reveal" style="font-size:clamp(26px,4vw,42px)">What counts as checking<br>the motion preference</h2>
+
+  <div class="guards">
+    <div>
+      <p class="lede reveal" style="margin-top:0">
+        A file is treated as guarded when any of these appear. Guards are read from the syntax tree
+        rather than the raw text, so a mention inside a comment does not silence anything.
+      </p>
+      <p class="lede reveal">
+        Guards are checked per file, not per branch. A file with a guard in one function and an
+        unguarded animation in another will pass. That is a deliberate trade. False positives are the
+        fastest way to get a linter switched off, and a rule nobody runs catches nothing.
+      </p>
+    </div>
+    <ul class="guard-list reveal">
+      <li>useReducedMotion() <span>Framer Motion and Motion</span></li>
+      <li>usePrefersReducedMotion() <span>common custom hook</span></li>
+      <li>"(prefers-reduced-motion: reduce)" <span>any matchMedia call</span></li>
+      <li>shouldReduceMotion <span>plain variable</span></li>
+      <li>reducedMotion="user" <span>MotionConfig prop</span></li>
+      <li>useMotionPreference() <span>design system wrapper</span></li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============ RUN ============ -->
+<section class="wrap section" id="run">
+  <div class="eyebrow reveal">Three ways to run it</div>
+  <h2 class="reveal" style="font-size:clamp(28px,4.4vw,46px)">Same rules.<br>Pick your surface.</h2>
+
+  <div class="modes">
+    <div class="mode reveal">
+      <span class="mode-tag">One</span>
+      <h3>On the command line</h3>
+      <p>Point it at a folder. It skips node_modules and build output on its own. Exit code is 1 when there is an error, so it drops straight into a pre-commit hook.</p>
+      <pre>npm i -D motion-a11y
+
+npx motion-a11y src</pre>
+    </div>
+
+    <div class="mode reveal">
+      <span class="mode-tag">Two ★</span>
+      <h3>In your pull requests</h3>
+      <p>The github format prints annotations, so each finding lands inline on the diff next to the line that caused it. Reviewers see it without opening the log.</p>
+      <pre>- run: npx motion-a11y src \
+    --format github</pre>
+    </div>
+
+    <div class="mode reveal">
+      <span class="mode-tag">Three</span>
+      <h3>From your own code</h3>
+      <p>Full TypeScript types, ESM and CommonJS. Parse errors come back on the result instead of throwing, so one bad file cannot take down your build script.</p>
+      <pre><span class="tok-key">import</span> { lint } <span class="tok-key">from</span> <span class="tok-str">"motion-a11y"</span>;
+
+<span class="tok-key">const</span> r = <span class="tok-key">lint</span>(src, {
+  <span class="tok-key">filename</span>: <span class="tok-str">"Hero.tsx"</span>
+});</pre>
+    </div>
+  </div>
+</section>
+
+<!-- ============ LIMITS ============ -->
+<section class="wrap section">
+  <div class="eyebrow reveal">What it does not do</div>
+  <h2 class="reveal" style="font-size:clamp(28px,4.4vw,46px)">A linter is only worth<br>keeping if it is honest.</h2>
+
+  <div class="limits">
+    <div class="limit reveal">
+      <h4>It does not read CSS</h4>
+      <p>Keyframes and transitions in a stylesheet belong to stylelint-a11y and its media-prefers-reduced-motion rule. Run both. They do not overlap.</p>
+    </div>
+    <div class="limit reveal">
+      <h4>It does not judge taste</h4>
+      <p>Only mechanical facts: rate, length, repetition, and whether a guard exists. Whether an animation feels comfortable is a human call.</p>
+    </div>
+    <div class="limit reveal">
+      <h4>Values must be literals</h4>
+      <p><code>duration: SPEED</code> cannot be resolved without running your code, so it is skipped rather than guessed at.</p>
+    </div>
+    <div class="limit reveal">
+      <h4>Guards are per file</h4>
+      <p>Not per branch or per component. This keeps false positives low, at the cost of missing a mixed file.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CTA ============ -->
+<section class="wrap cta">
+  <h2>Find out what your<br>animations are doing.</h2>
+  <p class="lede" style="margin-inline:auto">One command. No config file needed to start.</p>
+  <div class="hero-actions">
+    <a class="btn btn-primary" href="https://www.npmjs.com/package/motion-a11y">Get it from npm</a>
+    <a class="btn btn-ghost" href="https://github.com/kacytran1122/motion-a11y">Star on GitHub</a>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <a class="brand" href="#top" style="margin-bottom:14px">
+          <svg class="mark" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <rect x="1" y="1" width="22" height="22" rx="6" stroke="#9C7BFF" stroke-width="1.5"/>
+            <path d="M4 16 L8 16 L8 8 L12 8 L12 16 L16 16 L16 11 L20 11" stroke="#FFC24D" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          motion-a11y
+        </a>
+        <p style="max-width:38ch">The accessibility linter for animation code. For everyone who gets dizzy on your landing page and closes the tab without telling you.</p>
+      </div>
+      <div>
+        <h5>Package</h5>
+        <ul>
+          <li><a href="https://www.npmjs.com/package/motion-a11y">npm</a></li>
+          <li><a href="https://github.com/kacytran1122/motion-a11y">GitHub</a></li>
+          <li><a href="#rules">Rules</a></li>
+          <li><a href="#run">Install</a></li>
+        </ul>
+      </div>
+      <div>
+        <h5>Run alongside</h5>
+        <ul>
+          <li><a href="https://www.npmjs.com/package/@double-great/stylelint-a11y">stylelint-a11y</a></li>
+          <li><a href="https://www.npmjs.com/package/eslint-plugin-jsx-a11y">eslint-plugin-jsx-a11y</a></li>
+          <li><a href="https://www.npmjs.com/package/axe-core">axe-core</a></li>
+          <li><a href="https://www.npmjs.com/package/pdf-a11y">pdf-a11y</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span>© 2026 motion-a11y · MIT</span>
+      <span>This page respects prefers-reduced-motion. Nothing here flashes.</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  // The reader's motion preference gates every animation on this page,
+  // including the scroll reveal. This is the same guard the linter looks for.
+  var motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+  var allowMotion = !motionQuery.matches;
+
+  // ---- copy the install command ----
+  var copyBtn = document.getElementById("copy");
+  copyBtn.addEventListener("click", function () {
+    navigator.clipboard.writeText(document.getElementById("install-cmd").textContent).then(function () {
+      copyBtn.textContent = "copied";
+      setTimeout(function () { copyBtn.textContent = "copy"; }, 1600);
+    });
+  });
+
+  // ---- flash rate meter ----
+  var dur = document.getElementById("dur");
+  var hz = document.getElementById("hz");
+  var durval = document.getElementById("durval");
+  var verdict = document.getElementById("verdict");
+  var fill = document.getElementById("fill");
+  var code = document.getElementById("code");
+  var out = document.getElementById("out");
+
+  var MAX_HZ = 12;
+  var LIMIT_HZ = 3;
+
+  function esc(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  function render() {
+    var ms = Number(dur.value);
+    var rate = 1000 / ms;
+    var risky = rate > LIMIT_HZ;
+
+    durval.textContent = ms;
+    hz.textContent = rate.toFixed(1);
+    hz.style.color = risky ? "var(--alarm)" : "var(--safe)";
+
+    verdict.className = "verdict " + (risky ? "bad" : "ok");
+    verdict.textContent = risky ? "Seizure risk" : "Under the limit";
+
+    fill.style.width = Math.min(100, (rate / MAX_HZ) * 100) + "%";
+    fill.className = "fill" + (risky ? " bad" : "");
+
+    code.innerHTML =
+      'el.<span class="tok-key">animate</span>(\n' +
+      '  [{ <span class="tok-key">opacity</span>: <span class="tok-num">0</span> }, { <span class="tok-key">opacity</span>: <span class="tok-num">1</span> }],\n' +
+      '  { <span class="tok-key">duration</span>: <span class="tok-num">' + ms + '</span>, <span class="tok-key">iterations</span>: Infinity }\n' +
+      ');';
+
+    if (risky) {
+      out.innerHTML =
+        '<span class="lvl-error">error</span>  ' +
+        esc("el.animate repeats opacity about " + rate.toFixed(1) +
+            " times a second. Anything over 3 flashes a second is a seizure risk.") +
+        '<br><span class="rule">no-fast-flash · WCAG 2.3.1 Three Flashes or Below Threshold</span>';
+    } else {
+      out.innerHTML =
+        '<span class="lvl-pass">pass</span>   ' +
+        esc("Flash rate is " + rate.toFixed(1) + " per second, under the 3 per second limit.") +
+        '<br><span class="rule">no-fast-flash · nothing reported</span>';
+    }
+  }
+
+  dur.addEventListener("input", render);
+  render();
+
+  // ---- scroll reveal, only when motion is allowed ----
+  var revealables = document.querySelectorAll(".reveal");
+  if (!allowMotion || !("IntersectionObserver" in window)) {
+    revealables.forEach(function (el) { el.classList.add("in"); });
+  } else {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add("in");
+          io.unobserve(entry.target);
+        }
+      });
+    }, { rootMargin: "0px 0px -8% 0px", threshold: 0.05 });
+    revealables.forEach(function (el) { io.observe(el); });
+  }
+
+  // Anchor links jump instantly for readers who asked for less motion.
+  document.querySelectorAll('a[href^="#"]').forEach(function (link) {
+    link.addEventListener("click", function (event) {
+      var target = document.querySelector(link.getAttribute("href"));
+      if (!target) return;
+      event.preventDefault();
+      target.scrollIntoView({ behavior: allowMotion ? "smooth" : "auto", block: "start" });
+    });
+  });
+})();
+</script>
+</body>
+</html>
