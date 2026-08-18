@@ -37,19 +37,19 @@ Both problems are easy to ship by accident and easy to catch statically.
 npm install --save-dev motion-a11y
 ```
 
-Node 18 or newer.
+Node 18 or newer. One runtime dependency: `@babel/parser`.
 
 ## Rules
 
-| Rule | Default | WCAG | What it catches |
-| --- | --- | --- | --- |
-| `require-reduced-motion-guard` | error | 2.3.3 | A file animates but never checks the user's motion preference |
-| `no-infinite-animation` | error | 2.2.2 | `repeat: Infinity`, `repeat: -1`, `iterations: Infinity`, `loop` with no pause control |
-| `no-fast-flash` | error | 2.3.1 | A repeating animation changes opacity or colour more than 3 times a second |
-| `no-long-animation` | warn | 2.2.2 | Total run time over 5 seconds with no pause control, counting repeats |
-| `no-scroll-linked-animation` | warn | 2.3.3 | `useScroll`, `ScrollTrigger.create`, `scroll()` and other scroll driven motion |
-| `no-smooth-scroll` | warn | 2.3.3 | `behavior: "smooth"` with no reduced motion fallback |
-| `no-autoplay-lottie` | warn | 2.2.2 | A Lottie player starts on load |
+| Rule                           | Default | WCAG  | What it catches                                                                        |
+| ------------------------------ | ------- | ----- | -------------------------------------------------------------------------------------- |
+| `require-reduced-motion-guard` | error   | 2.3.3 | A file animates but never checks the user's motion preference                          |
+| `no-infinite-animation`        | error   | 2.2.2 | `repeat: Infinity`, `repeat: -1`, `iterations: Infinity`, `loop` with no pause control |
+| `no-fast-flash`                | error   | 2.3.1 | A repeating animation changes opacity or colour more than 3 times a second             |
+| `no-long-animation`            | warn    | 2.2.2 | Total run time over 5 seconds with no pause control, counting repeats                  |
+| `no-scroll-linked-animation`   | warn    | 2.3.3 | `useScroll`, `ScrollTrigger.create`, `scroll()` and other scroll driven motion         |
+| `no-smooth-scroll`             | warn    | 2.3.3 | `behavior: "smooth"` with no reduced motion fallback                                   |
+| `no-autoplay-lottie`           | warn    | 2.2.2 | A Lottie player starts on load                                                         |
 
 ### How the numbers are worked out
 
@@ -63,6 +63,68 @@ Node 18 or newer.
 `no-fast-flash` still reports in a file that checks `prefers-reduced-motion`.
 
 That is deliberate. Most people who are photosensitive have never changed that operating system setting, and a seizure risk is not a preference to respect. Fix the flash rate itself.
+
+## Suppressing a finding
+
+A linter without an escape hatch gets switched off wholesale the first time it
+is wrong, so there is one. The shapes are the ones ESLint uses:
+
+```js
+// motion-a11y-disable-next-line
+gsap.to(".a", { repeat: -1 });
+
+// motion-a11y-disable-next-line no-infinite-animation, no-long-animation
+gsap.to(".b", { repeat: -1, duration: 12 });
+
+gsap.to(".c", { repeat: -1 }); // motion-a11y-disable-line
+
+/* motion-a11y-disable */
+// ... everything from here down is unchecked
+/* motion-a11y-enable */
+```
+
+A bare directive covers every rule. Naming rules after it covers only those.
+Suppressed findings are counted in `suppressedCount` rather than reported.
+
+This includes `no-fast-flash`, which a reduced motion guard deliberately cannot
+silence. An inline comment is a reviewed decision about one line; a motion
+preference is not. Refusing it here would only push people to switch the rule
+off across the whole project, which is worse.
+
+## Ignoring files
+
+Put patterns in `.motion-a11yignore`, or pass `--ignore` (repeatable):
+
+```
+# .motion-a11yignore
+dist/
+src/generated/**
+*.gen.ts
+```
+
+Patterns work like gitignore: a bare name matches any path segment, a trailing
+slash means directories only and covers everything inside, `*` stays within one
+segment and `**` crosses them. Negation (`!`) is not supported, and is reported
+as an error rather than silently ignored.
+
+## Configuration
+
+Settings can live in `motion-a11y.config.json`, `.motion-a11yrc.json`, or a
+`motion-a11y` key in `package.json`:
+
+```json
+{
+  "preset": "strict",
+  "rules": { "no-smooth-scroll": "off" },
+  "ignore": ["src/generated/**"],
+  "maxWarnings": 0
+}
+```
+
+JSON only, on purpose: a config format that can execute code is a supply chain
+surface for a tool people run in CI over a checkout, and nothing here needs to
+be computed. An unknown key is an error rather than a silent no-op. Command line
+options win over the file, and `--no-config` ignores it entirely.
 
 ## What counts as a guard
 
@@ -93,11 +155,24 @@ motion-a11y src --rule no-smooth-scroll=off
 motion-a11y src --format github          # inline annotations on a pull request
 motion-a11y src --format json            # machine readable
 motion-a11y src --quiet                  # errors only
+motion-a11y src --ignore "src/generated/**"
 motion-a11y src --no-prefilter           # parse every file, even ones with no animation
+motion-a11y src --allow-unchecked        # do not fail on files that cannot be parsed
 motion-a11y --rules                      # list every rule
 ```
 
-Exit code is 1 when there is at least one error, otherwise 0. Use `--max-warnings 0` to fail on warnings too.
+### Exit codes
+
+| Code | Meaning                                                                  |
+| ---- | ------------------------------------------------------------------------ |
+| 0    | Nothing to report                                                        |
+| 1    | At least one error, warnings over `--max-warnings`, or an unchecked file |
+| 2    | Bad usage: an unknown option, an unreadable path, an invalid config      |
+
+A file that could not be parsed **fails the run**, the same way ESLint treats a
+parse error. A linter reporting success for a file it never read is how an
+unchecked file slips through a CI gate. Pass `--allow-unchecked` to downgrade
+that to a report.
 
 ### In GitHub Actions
 
@@ -110,11 +185,13 @@ Exit code is 1 when there is at least one error, otherwise 0. Use `--max-warning
 Beyond the obvious ones, these all resolve:
 
 ```js
-const tl = gsap.timeline();      // timelines held in a local
-tl.to(".a", { duration: 12 });   // ...and the tweens added to them
-gsap.timeline().to(".a", {});    // fluent chains
-gsap.to(".a", 12, { x: 1 });     // the GSAP 2 duration argument
-ScrollTrigger.create({ ... });   // the plugin entry point
+ref.current?.animate(frames, opts); // optional chaining, the usual React idiom
+const tl = gsap.timeline(); // timelines held in a local
+tl.to(".a", { duration: 12 }); // ...and the tweens added to them
+gsap.timeline().to(".a", {}); // fluent chains
+gsap.to(".a", 12, { x: 1 }); // the GSAP 2 duration argument
+ScrollTrigger.create({ ... }); // the plugin entry point
+el.scrollIntoView({ behavior: "smooth" as ScrollBehavior }); // TS wrappers
 <div style={{ scrollBehavior: "smooth" }} />;
 <Lottie animationData={data} />; // lottie-react autoplays and loops by default
 ```
@@ -139,6 +216,7 @@ for (const message of result.messages) {
   messages: Message[];
   errorCount: number;
   warningCount: number;
+  suppressedCount: number; // findings an inline disable comment silenced
   guarded: boolean;       // did the file check the motion preference
   parseError?: string;    // set instead of throwing
   analysisError?: string; // set instead of throwing, when a parsed file could not be checked

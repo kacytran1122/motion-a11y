@@ -48,8 +48,10 @@ for (const cli of cliPaths) {
   const ms = time(cli);
   console.log(
     `  ${cli.padEnd(48)} ${ms.toFixed(0).padStart(6)} ms   ` +
-      `${Math.round(count / (ms / 1000)).toString().padStart(6)} files/s   ` +
-      `${((bytes / 1048576) / (ms / 1000)).toFixed(2)} MB/s`,
+      `${Math.round(count / (ms / 1000))
+        .toString()
+        .padStart(6)} files/s   ` +
+      `${(bytes / 1048576 / (ms / 1000)).toFixed(2)} MB/s`,
   );
 }
 rmSync(repo, { recursive: true, force: true });

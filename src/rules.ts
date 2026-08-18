@@ -1,4 +1,12 @@
-import { Node, booleanValue, getProp, isInfinity, numberValue, spanOf, stringValue } from "./ast.js";
+import {
+  Node,
+  booleanValue,
+  getProp,
+  isInfinity,
+  numberValue,
+  spanOf,
+  stringValue,
+} from "./ast.js";
 import type { AnimationSite, FileContext } from "./collect.js";
 import type { Finding } from "./types.js";
 

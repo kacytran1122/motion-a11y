@@ -5,15 +5,48 @@ on:
     branches: [main]
   pull_request:
 
+# A second push to the same branch makes the first run irrelevant.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
-  # Tests run on Node's own test runner, so every version the package supports
-  # can run the whole suite, including the oldest one.
-  test:
+  # Static checks are cheap and version independent, so they run once.
+  static:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm audit --audit-level=high
+
+  # The CLI walks directories and compares paths, so it is tested on every
+  # platform it claims to run on, not just Linux.
+  test:
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
         node: [18, 20, 22, 24]
+        exclude:
+          # Keep the matrix affordable: the oldest and newest Node on Linux
+          # cover the range, and the other platforms test the current LTS.
+          - { os: windows-latest, node: 18 }
+          - { os: windows-latest, node: 20 }
+          - { os: windows-latest, node: 24 }
+          - { os: macos-latest, node: 18 }
+          - { os: macos-latest, node: 20 }
+          - { os: macos-latest, node: 24 }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -21,15 +54,12 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
-      - run: npm run typecheck
       # Build first: the end to end tests run the real CLI out of dist.
       - run: npm run build
       - run: npm test
       # Exercises the built ESM, CJS and CLI artefacts rather than the sources.
       - run: npm run smoke
-      - run: npm audit --audit-level=high
 
-  # Coverage thresholds need the flags Node 22 added.
   coverage:
     runs-on: ubuntu-latest
     steps:
@@ -41,3 +71,34 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm run coverage
+
+  # Catches packaging faults that only appear in the published tarball:
+  # wrong exports map, missing types, bad entry points.
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run validate
+      # Install the real tarball into a clean project and run it.
+      - run: npm pack
+      - name: Install the tarball into a clean project and run it
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/consumer && cd /tmp/consumer
+          npm init -y >/dev/null
+          npm i "$GITHUB_WORKSPACE"/motion-a11y-*.tgz
+          mkdir -p src
+          printf 'import gsap from "gsap";\ngsap.to(".a",{x:1,repeat:-1});\n' > src/a.ts
+          # A failing lint must exit non-zero; `|| true` here would hide that.
+          if npx motion-a11y src; then
+            echo "expected a non-zero exit from a failing lint"
+            exit 1
+          fi
+          npx motion-a11y --version

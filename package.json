@@ -1,18 +1,22 @@
 {
   "name": "motion-a11y",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Accessibility linter for animation code. Finds motion that can trigger vestibular disorders and seizures in Framer Motion, Motion, GSAP, Lottie and the Web Animations API.",
   "keywords": [
-    "accessibility",
     "a11y",
+    "accessibility",
     "animation",
-    "prefers-reduced-motion",
-    "wcag",
-    "vestibular",
+    "ci",
     "framer-motion",
     "gsap",
+    "linter",
     "lottie",
-    "linter"
+    "motion",
+    "prefers-reduced-motion",
+    "seizure",
+    "static-analysis",
+    "vestibular",
+    "wcag"
   ],
   "license": "MIT",
   "type": "module",
@@ -38,23 +42,34 @@
   "files": [
     "dist",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {
     "build": "tsup",
+    "pretest": "npm run build",
     "test": "node --import tsx --test test/*.test.ts",
-    "coverage": "node --import tsx --experimental-test-coverage --test-coverage-exclude='test/**' --test-coverage-exclude='bench/**' --test-coverage-exclude='dist/**' --test-coverage-exclude='src/cli.ts' --test-coverage-exclude='src/types.ts' --test-coverage-lines=95 --test-coverage-functions=95 --test-coverage-branches=88 --test test/*.test.ts",
+    "precoverage": "npm run build",
+    "coverage": "node --import tsx --experimental-test-coverage --test-coverage-exclude='test/**' --test-coverage-exclude='bench/**' --test-coverage-exclude='dist/**' --test-coverage-exclude='src/cli.ts' --test-coverage-exclude='src/types.ts' --test-coverage-lines=98 --test-coverage-functions=97 --test-coverage-branches=92 --test test/*.test.ts",
+    "lint": "oxlint",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "validate": "publint && attw --pack .",
     "smoke": "node scripts/smoke.mjs",
     "bench": "node --expose-gc bench/bench.mjs",
-    "typecheck": "tsc --noEmit",
-    "prepack": "npm run build",
-    "lint:self": "npm run typecheck && npm run build && npm test && node dist/cli.js src"
+    "verify": "npm run typecheck && npm run lint && npm run format:check && npm run build && npm run coverage && npm run smoke && npm run validate && npm audit --audit-level=high && node dist/cli.js src",
+    "prepack": "npm run build"
   },
   "dependencies": {
     "@babel/parser": "^7.25.0"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
     "@types/node": "^22.0.0",
+    "oxlint": "^1.78.0",
+    "prettier": "^3.9.6",
+    "publint": "^0.3.23",
     "tsup": "^8.0.0",
     "tsx": "^4.23.12",
     "typescript": "^5.5.0"
@@ -71,7 +86,9 @@
     "url": "https://github.com/kacytran1122/motion-a11y/issues"
   },
   "homepage": "https://github.com/kacytran1122/motion-a11y#readme",
-  "sideEffects": false,
+  "sideEffects": [
+    "./dist/cli.js"
+  ],
   "publishConfig": {
     "access": "public"
   }

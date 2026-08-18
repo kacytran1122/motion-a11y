@@ -21,13 +21,16 @@ const result = (over: Partial<LintResult> = {}): LintResult => ({
   messages: [],
   errorCount: 0,
   warningCount: 0,
+  suppressedCount: 0,
   guarded: false,
   ...over,
 });
 
 describe("formatPretty", () => {
   it("does not claim a clean run when a file failed to parse", () => {
-    const output = formatPretty([result({ parseError: "Unexpected token (2:5)" })], { color: false });
+    const output = formatPretty([result({ parseError: "Unexpected token (2:5)" })], {
+      color: false,
+    });
     expect(output).not.toContain("No animation accessibility problems found.");
     expect(output).toContain("parse error");
     expect(output).toContain("1 file could not be checked");
@@ -47,7 +50,13 @@ describe("formatPretty", () => {
 
   it("pluralises the summary", () => {
     const output = formatPretty(
-      [result({ messages: [message(), message({ severity: "error" })], errorCount: 1, warningCount: 1 })],
+      [
+        result({
+          messages: [message(), message({ severity: "error" })],
+          errorCount: 1,
+          warningCount: 1,
+        }),
+      ],
       { color: false },
     );
     expect(output).toContain("1 error, 1 warning");

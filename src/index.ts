@@ -1,5 +1,6 @@
 import { createLocator, parseFile, type Node } from "./ast.js";
 import { collect, mightAnimate } from "./collect.js";
+import { SuppressionMap } from "./suppress.js";
 import { runRules } from "./rules.js";
 import type {
   Finding,
@@ -125,6 +126,7 @@ const EMPTY_RESULT = (filename: string): LintResult => ({
   messages: [],
   errorCount: 0,
   warningCount: 0,
+  suppressedCount: 0,
   guarded: false,
 });
 
@@ -184,19 +186,33 @@ export function lintAst(ast: Node, code: string, options: LintOptions = {}): Lin
   }
 
   const locate = createLocator(code);
+  const suppressions = new SuppressionMap(ast?.comments ?? [], ast?.loc?.end?.line ?? 0);
   const messages: Message[] = [];
   let errorCount = 0;
   let warningCount = 0;
+  let suppressedCount = 0;
 
   for (const finding of findings) {
     const severity = severities[finding.rule];
     if (severity !== "warn" && severity !== "error") continue; // "off" or unknown
-    messages.push(toMessage(finding, severity, locate));
+    const message = toMessage(finding, severity, locate);
+    if (suppressions.isSuppressed(finding.rule, message.line)) {
+      suppressedCount++;
+      continue;
+    }
+    messages.push(message);
     if (severity === "error") errorCount++;
     else warningCount++;
   }
 
   messages.sort((a, b) => a.line - b.line || a.column - b.column || a.rule.localeCompare(b.rule));
 
-  return { filename, messages, errorCount, warningCount, guarded: context.guarded };
+  return {
+    filename,
+    messages,
+    errorCount,
+    warningCount,
+    suppressedCount,
+    guarded: context.guarded,
+  };
 }

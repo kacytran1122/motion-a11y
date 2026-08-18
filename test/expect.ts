@@ -67,7 +67,10 @@ class Expectation<T> {
   }
 
   toMatch(pattern: RegExp): void {
-    this.assert(typeof this.actual === "string" && pattern.test(this.actual), `to match ${pattern}`);
+    this.assert(
+      typeof this.actual === "string" && pattern.test(this.actual),
+      `to match ${pattern}`,
+    );
   }
 
   toBeNull(): void {

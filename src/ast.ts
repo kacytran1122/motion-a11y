@@ -114,6 +114,21 @@ export function walk(root: Node, visit: (node: Node, parent: Node | null) => voi
   step(root, null);
 }
 
+/**
+ * Optional chaining produces its own node types. Everything that reads a call
+ * or a member has to accept both spellings or `ref.current?.animate(...)`, the
+ * ordinary way to reach the Web Animations API from React, goes unseen.
+ */
+export function isCallNode(node: Node): boolean {
+  const type = node?.type;
+  return type === "CallExpression" || type === "OptionalCallExpression";
+}
+
+export function isMemberNode(node: Node): boolean {
+  const type = node?.type;
+  return type === "MemberExpression" || type === "OptionalMemberExpression";
+}
+
 /** Strips wrappers that do not change the value: parens, `as T`, `!`, `satisfies`. */
 export function unwrap(node: Node): Node {
   let current = node;
@@ -142,7 +157,7 @@ export function memberPath(node: Node): string | null {
   if (!target) return null;
   if (target.type === "Identifier") return target.name;
   if (target.type === "ThisExpression") return "this";
-  if (target.type === "MemberExpression") {
+  if (isMemberNode(target)) {
     if (target.computed) return null;
     const object = memberPath(target.object);
     const property = target.property?.name;
@@ -182,7 +197,7 @@ export function calleeName(callee: Node): string | null {
   const target = unwrap(callee);
   if (!target) return null;
   if (target.type === "Identifier") return target.name;
-  if (target.type === "MemberExpression" && !target.computed) {
+  if (isMemberNode(target) && !target.computed) {
     return target.property?.name ?? null;
   }
   return null;
@@ -255,7 +270,7 @@ export function isInfinity(node: Node): boolean {
   const target = unwrap(node);
   if (!target) return false;
   if (target.type === "Identifier" && target.name === "Infinity") return true;
-  if (target.type === "MemberExpression") {
+  if (isMemberNode(target)) {
     const path = memberPath(target);
     return path === "Number.POSITIVE_INFINITY" || path === "Number.MAX_SAFE_INTEGER";
   }

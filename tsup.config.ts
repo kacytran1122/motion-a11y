@@ -14,5 +14,8 @@ export default defineConfig([
     format: ["esm"],
     clean: false,
     target: "node18",
+    // dist/cli.js sits next to dist/index.js, so "./index.js" resolves at
+    // runtime. Leaving it external stops the whole engine being bundled twice.
+    external: ["./index.js"],
   },
 ]);

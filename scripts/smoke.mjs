@@ -1,14 +1,14 @@
 /**
  * Runs the built package on the oldest Node version it claims to support.
  *
- * The test suite needs a toolchain that no longer runs on Node 18, so this
- * exercises the real artefacts in dist/ with nothing but the standard library.
- * Run it with: npm run smoke
+ * The unit tests run against src/; this runs against the published artefacts in
+ * dist/ using nothing but the standard library, so it catches build and
+ * packaging faults the unit tests cannot see. Run it with: npm run smoke
  */
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -77,8 +77,27 @@ check("cjs build loads and behaves the same", () => {
   assert.equal(typeof cjs.lint, "function");
   const code = `import gsap from "gsap"; gsap.to(".a", { x: 1, repeat: -1 });`;
   assert.deepEqual(
-    cjs.lint(code, { filename: "a.ts" }).messages.map((m) => m.rule).sort(),
-    esm.lint(code, { filename: "a.ts" }).messages.map((m) => m.rule).sort(),
+    cjs
+      .lint(code, { filename: "a.ts" })
+      .messages.map((m) => m.rule)
+      .sort(),
+    esm
+      .lint(code, { filename: "a.ts" })
+      .messages.map((m) => m.rule)
+      .sort(),
+  );
+});
+
+// ---- Build shape -----------------------------------------------------------
+check("cli links to the library instead of re-bundling it", () => {
+  const cliSource = readFileSync(join(root, "dist", "cli.js"), "utf8");
+  // The build marks "./index.js" external so the engine ships once, not twice.
+  // If that ever silently stops working the CLI still runs, so only a check on
+  // the artefact itself will notice.
+  assert.match(cliSource, /from\s*"\.\/index\.js"/);
+  assert.ok(
+    cliSource.length < 40_000,
+    `dist/cli.js is ${cliSource.length} bytes; the library looks bundled into it again`,
   );
 });
 

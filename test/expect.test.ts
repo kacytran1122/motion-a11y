@@ -18,6 +18,10 @@ function passes(fn: () => void): void {
   fn();
 }
 
+function boom(): never {
+  throw new Error("boom hard");
+}
+
 describe("expect helper", () => {
   it("toBe compares by identity", () => {
     passes(() => expect(1).toBe(1));
@@ -91,9 +95,6 @@ describe("expect helper", () => {
   });
 
   it("toThrow requires a throw and can match the message", () => {
-    const boom = () => {
-      throw new Error("boom hard");
-    };
     passes(() => expect(boom).toThrow());
     passes(() => expect(boom).toThrow(/boom/));
     fails(() => expect(boom).toThrow(/quiet/));

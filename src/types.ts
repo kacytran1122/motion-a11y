@@ -31,6 +31,8 @@ export interface LintResult {
   messages: Message[];
   errorCount: number;
   warningCount: number;
+  /** Findings that an inline `motion-a11y-disable` comment silenced. */
+  suppressedCount: number;
   /** True when the file contains a reduced motion guard. */
   guarded: boolean;
   /** Set when the file could not be parsed. */

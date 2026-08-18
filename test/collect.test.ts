@@ -248,3 +248,58 @@ describe("smooth scroll", () => {
     expect(rules(code, "a.ts")).toHaveLength(0);
   });
 });
+
+describe("optional chaining", () => {
+  // Babel gives optional calls and members their own node types. Reading only
+  // CallExpression and MemberExpression made every one of these invisible, and
+  // `ref.current?.animate(...)` is the ordinary React idiom for the Web
+  // Animations API, so this was the largest class of missed findings.
+  it("sees an optional Web Animations API call", () => {
+    const code = `el?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 100, iterations: Infinity });`;
+    const found = rules(code, "a.ts");
+    expect(found).toContain("no-fast-flash");
+    expect(found).toContain("no-infinite-animation");
+  });
+
+  it("sees the React ref idiom", () => {
+    const code = `ref.current?.animate([{ opacity: 0 }], { duration: 9000 });`;
+    expect(rules(code, "a.ts")).toContain("no-long-animation");
+  });
+
+  it("sees an optional gsap call", () => {
+    const code = `import gsap from "gsap";\ngsap?.to(".a", { x: 1, repeat: -1 });`;
+    expect(rules(code, "a.ts")).toContain("no-infinite-animation");
+  });
+
+  it("sees an optional smooth scroll", () => {
+    expect(rules(`el?.scrollIntoView({ behavior: "smooth" });`, "a.ts")).toContain(
+      "no-smooth-scroll",
+    );
+  });
+
+  it("sees a mixed optional member path", () => {
+    const code = `import gsap from "gsap";\ngsap.utils?.toArray;\ngsap?.timeline?.().to(".a", { x: 1, duration: 12 });`;
+    expect(rules(code, "a.ts")).toContain("no-long-animation");
+  });
+
+  it("still ignores an optional call on something unrelated", () => {
+    expect(rules(`converter?.to("metres", { duration: 12 });`, "a.ts")).toHaveLength(0);
+  });
+});
+
+describe("wrapped call arguments", () => {
+  it("reads options through a satisfies expression", () => {
+    const code = `import gsap from "gsap";\ngsap.to(".a", { x: 1, duration: 12 } satisfies object);`;
+    expect(rules(code, "a.ts")).toContain("no-long-animation");
+  });
+
+  it("reads options through an as expression", () => {
+    const code = `import gsap from "gsap";\ngsap.to(".a", { x: 1, repeat: -1 } as GsapVars);`;
+    expect(rules(code, "a.ts")).toContain("no-infinite-animation");
+  });
+
+  it("reads waapi options through an as expression", () => {
+    const code = `el.animate([{ opacity: 0 }], { duration: 9000 } as KeyframeAnimationOptions);`;
+    expect(rules(code, "a.ts")).toContain("no-long-animation");
+  });
+});

@@ -165,7 +165,8 @@ describe("object readers", () => {
 });
 
 describe("jsx readers", () => {
-  const element = parseFile(`<A loop autoplay={false} name="x" />;`, "a.tsx").program.body[0].expression;
+  const element = parseFile(`<A loop autoplay={false} name="x" />;`, "a.tsx").program.body[0]
+    .expression;
 
   it("finds an attribute", () => {
     expect(getJsxAttr(element, "loop")).not.toBeNull();

@@ -15,16 +15,33 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
           cache: npm
       - run: npm ci
+
+      # The same gate CI runs, so a tag cannot ship something main would reject.
       - run: npm run typecheck
-      # Build before testing: the end to end tests run the real CLI out of dist.
+      - run: npm run lint
+      - run: npm run format:check
       - run: npm run build
       - run: npm test
+      - run: npm run coverage
       - run: npm run smoke
+      - run: npm run validate
       - run: npm audit --audit-level=high
+
+      # The tag must match the version being published.
+      - name: Check the tag matches package.json
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG="$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "tag $GITHUB_REF_NAME does not match package.json version $PKG"
+            exit 1
+          fi
+
       # prepack builds again. --provenance only works here, in CI with OIDC.
       - run: npm publish --provenance --access public
         env:

@@ -65,7 +65,9 @@ describe("flash rate", () => {
 
   it("reports the rate it actually computed", () => {
     const code = `el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 100, iterations: Infinity });`;
-    const message = lint(code, { filename: "a.js" }).messages.find((m) => m.rule === "no-fast-flash");
+    const message = lint(code, { filename: "a.js" }).messages.find(
+      (m) => m.rule === "no-fast-flash",
+    );
     expect(message?.message).toContain("10.0 times a second");
   });
 
@@ -81,7 +83,9 @@ describe("total run time", () => {
       import gsap from "gsap";
       gsap.to(".a", { x: 1, duration: 2, repeat: 5 });
     `;
-    const message = lint(code, { filename: "a.ts" }).messages.find((m) => m.rule === "no-long-animation");
+    const message = lint(code, { filename: "a.ts" }).messages.find(
+      (m) => m.rule === "no-long-animation",
+    );
     expect(message?.message).toContain("12.0s");
     expect(message?.message).toContain("6 passes");
   });
@@ -222,7 +226,9 @@ describe("prefilter", () => {
   });
 
   it("skips a file with no animation marker", () => {
-    const result = lint(`export const add = (a: number, b: number) => a + b;`, { filename: "a.ts" });
+    const result = lint(`export const add = (a: number, b: number) => a + b;`, {
+      filename: "a.ts",
+    });
     expect(result.messages).toHaveLength(0);
     expect(result.parseError).toBeUndefined();
   });

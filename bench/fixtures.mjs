@@ -1,14 +1,5 @@
-// Deterministic synthetic corpus generator. No randomness that varies between runs.
-let seed = 0x2f6e2b1;
-function rnd() {
-  // xorshift32, deterministic across runs and platforms.
-  seed ^= seed << 13; seed >>>= 0;
-  seed ^= seed >>> 17;
-  seed ^= seed << 5; seed >>>= 0;
-  return seed / 0x100000000;
-}
-export function resetSeed(value = 0x2f6e2b1) { seed = value >>> 0; }
-
+// Deterministic synthetic corpus generator. Entirely index driven, so a run on
+// one machine produces byte identical input to a run on another.
 const FILLER = (i) => `
 export function helper${i}(a: number, b: number) {
   const parts = [a, b].map((n) => n * ${i + 1});
@@ -65,7 +56,6 @@ export function makeFile(i, bulk = 4) {
 }
 
 export function makeCorpus(count, bulk = 4) {
-  resetSeed();
   const files = [];
   for (let i = 0; i < count; i++) {
     files.push({ filename: `src/gen/File${i}.tsx`, code: makeFile(i, bulk) });

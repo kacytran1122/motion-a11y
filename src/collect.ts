@@ -2,9 +2,12 @@ import {
   Node,
   booleanValue,
   calleeName as readCalleeName,
+  unwrap,
   getJsxAttr,
   getProp,
   head,
+  isCallNode,
+  isMemberNode,
   jsxAttrValue,
   memberPath,
   propertyName,
@@ -91,7 +94,15 @@ const LOTTIE_COMPONENTS = new Set([
 ]);
 const AMBIGUOUS_LOTTIE_COMPONENTS = new Set(["Player", "Animation"]);
 
-const MOTION_TIMING_PROPS = ["animate", "whileHover", "whileTap", "whileInView", "whileDrag", "whileFocus", "exit"];
+const MOTION_TIMING_PROPS = [
+  "animate",
+  "whileHover",
+  "whileTap",
+  "whileInView",
+  "whileDrag",
+  "whileFocus",
+  "exit",
+];
 
 const SCROLL_HOOKS = new Set([
   "useScroll",
@@ -138,10 +149,22 @@ function isPauseToken(name: string): boolean {
   );
 }
 
+/** Reads one Lottie JSX attribute, falling back to the component's own default. */
+function readLottieAttr(attr: Node, fallback: Tri): Tri {
+  if (!attr) return fallback;
+  if (!attr.value) return true; // bare attribute means true
+  const value = jsxAttrValue(attr);
+  // `loop={3}` is a repeat count, not an endless loop.
+  if (value?.type === "NumericLiteral") return false;
+  return booleanValue(value);
+}
+
 /** Last object argument of a call, which is where every one of these libraries puts options. */
 function lastObjectArg(args: Node[]): Node | null {
   for (let i = args.length - 1; i >= 0; i--) {
-    if (args[i]?.type === "ObjectExpression") return args[i];
+    // `gsap.to(".a", { duration: 12 } satisfies Vars)` still holds the options.
+    const arg = unwrap(args[i]);
+    if (arg?.type === "ObjectExpression") return arg;
   }
   return null;
 }
@@ -265,17 +288,9 @@ export function collect(ast: Node): FileContext {
     const autoplayAttr = getJsxAttr(element, "autoplay") ?? getJsxAttr(element, "autoPlay");
     const loopAttr = getJsxAttr(element, "loop");
     const defaultsOn = LOTTIE_AUTOPLAY_BY_DEFAULT.test(mod);
-    const readAttr = (attr: Node, fallback: Tri): Tri => {
-      if (!attr) return fallback;
-      if (!attr.value) return true; // bare attribute means true
-      const value = jsxAttrValue(attr);
-      // `loop={3}` is a repeat count, not an endless loop.
-      if (value?.type === "NumericLiteral") return false;
-      return booleanValue(value);
-    };
     return {
-      autoplay: readAttr(autoplayAttr, defaultsOn),
-      loop: readAttr(loopAttr, defaultsOn),
+      autoplay: readLottieAttr(autoplayAttr, defaultsOn),
+      loop: readLottieAttr(loopAttr, defaultsOn),
       implicit: defaultsOn && !autoplayAttr,
     };
   };
@@ -285,13 +300,21 @@ export function collect(ast: Node): FileContext {
 
     // Import declarations hold names but no behaviour. Skipping the subtree
     // stops `import { useReducedMotion }` from counting as a guard on its own.
-    if (type === "ImportDeclaration" || type === "TSTypeAliasDeclaration" || type === "TSInterfaceDeclaration") {
+    if (
+      type === "ImportDeclaration" ||
+      type === "TSTypeAliasDeclaration" ||
+      type === "TSInterfaceDeclaration"
+    ) {
       return false;
     }
 
     // ---- guard detection, from real tokens rather than raw text ----
     if (!guarded) {
-      if (type === "Identifier" && GUARD_IDENTIFIERS.has(node.name) && !isNamePosition(node, parent)) {
+      if (
+        type === "Identifier" &&
+        GUARD_IDENTIFIERS.has(node.name) &&
+        !isNamePosition(node, parent)
+      ) {
         guarded = true;
       } else if (type === "JSXAttribute" && node.name?.name === "reducedMotion") {
         // <MotionConfig reducedMotion="never"> switches the guard off.
@@ -391,7 +414,7 @@ export function collect(ast: Node): FileContext {
 
     if (type === "VariableDeclarator" || type === "AssignmentExpression") {
       // const tl = gsap.timeline(...)  /  tl = gsap.timeline(...)
-      const init = type === "VariableDeclarator" ? node.init : node.right;
+      const init = unwrap(type === "VariableDeclarator" ? node.init : node.right);
       const binding = type === "VariableDeclarator" ? node.id : node.left;
       if (type === "AssignmentExpression") {
         // document.documentElement.style.scrollBehavior = "smooth"
@@ -409,7 +432,7 @@ export function collect(ast: Node): FileContext {
           return;
         }
       }
-      if (init?.type === "CallExpression" && binding?.type === "Identifier") {
+      if (isCallNode(init) && binding?.type === "Identifier") {
         const method = readCalleeName(init.callee);
         if (method && GSAP_TWEEN_METHODS.has(method)) {
           if (isGsapName(memberPath(init.callee))) gsapLocals.add(binding.name);
@@ -419,7 +442,7 @@ export function collect(ast: Node): FileContext {
       return;
     }
 
-    if (type !== "CallExpression") return;
+    if (!isCallNode(node)) return;
 
     const calleePath = memberPath(node.callee);
     const calleeName = readCalleeName(node.callee) ?? tail(calleePath);
@@ -477,7 +500,7 @@ export function collect(ast: Node): FileContext {
         pushGsapSite(node, calleePath ?? calleeName, calleeName, args);
         return;
       }
-      const receiver = node.callee?.type === "MemberExpression" ? node.callee.object : null;
+      const receiver = isMemberNode(node.callee) ? unwrap(node.callee.object) : null;
       if (receiver) {
         pending.push({ node, method: calleeName, rootName: head(calleePath), receiver, args });
       }
@@ -512,9 +535,9 @@ export function collect(ast: Node): FileContext {
         unit: "ms",
         // lottie-web defaults both to false, so absence means off.
         lottie: {
-          autoplay: config ? booleanValue(getProp(config, "autoplay")) ?? false : false,
+          autoplay: config ? (booleanValue(getProp(config, "autoplay")) ?? false) : false,
           // `loop: 3` is a count, not an endless loop.
-          loop: loop && loop.type === "NumericLiteral" ? false : booleanValue(loop) ?? false,
+          loop: loop && loop.type === "NumericLiteral" ? false : (booleanValue(loop) ?? false),
           implicit: false,
         },
       });
@@ -524,7 +547,7 @@ export function collect(ast: Node): FileContext {
     // ---- Web Animations API: element.animate(keyframes, options) ----
     if (
       calleeName === "animate" &&
-      node.callee?.type === "MemberExpression" &&
+      isMemberNode(node.callee) &&
       !isMotionName(calleePath) &&
       !isGsapName(calleePath)
     ) {
@@ -534,10 +557,10 @@ export function collect(ast: Node): FileContext {
         library: "waapi",
         label: calleePath ?? "element.animate",
         node,
-        config: options?.type === "ObjectExpression" ? options : null,
+        config: unwrap(options)?.type === "ObjectExpression" ? unwrap(options) : null,
         target: keyframes,
         unit: "ms",
-        durationNode: options?.type === "ObjectExpression" ? null : options,
+        durationNode: unwrap(options)?.type === "ObjectExpression" ? null : options,
       });
     }
   });
@@ -548,6 +571,13 @@ export function collect(ast: Node): FileContext {
   sites.sort((a, b) => (a.node.start ?? 0) - (b.node.start ?? 0));
 
   return { imports, guarded, hasPauseControl, sites };
+}
+
+/** Appends to a list held in a map, creating the list on first use. */
+function pushInto<K, V>(map: Map<K, V[]>, key: K, value: V): void {
+  const existing = map.get(key);
+  if (existing) existing.push(value);
+  else map.set(key, [value]);
 }
 
 /**
@@ -561,7 +591,13 @@ export function collect(ast: Node): FileContext {
  * silently leave the tail of a long chain unchecked.
  */
 function resolvePendingGsap(
-  pending: Array<{ node: Node; method: string; rootName: string | null; receiver: Node; args: Node[] }>,
+  pending: Array<{
+    node: Node;
+    method: string;
+    rootName: string | null;
+    receiver: Node;
+    args: Node[];
+  }>,
   gsapLocals: Set<string>,
   gsapNodes: Set<Node>,
   declaredFrom: Map<Node, string>,
@@ -573,15 +609,9 @@ function resolvePendingGsap(
   const waitingOnNode = new Map<Node, Item[]>();
   const waitingOnLocal = new Map<string, Item[]>();
 
-  const index = <K,>(map: Map<K, Item[]>, key: K, item: Item): void => {
-    const existing = map.get(key);
-    if (existing) existing.push(item);
-    else map.set(key, [item]);
-  };
-
   for (const item of pending) {
-    if (item.receiver.type === "Identifier") index(waitingOnLocal, item.receiver.name, item);
-    else if (item.receiver.type === "CallExpression") index(waitingOnNode, item.receiver, item);
+    if (item.receiver.type === "Identifier") pushInto(waitingOnLocal, item.receiver.name, item);
+    else if (isCallNode(item.receiver)) pushInto(waitingOnNode, item.receiver, item);
   }
 
   const nodeQueue: Node[] = [...gsapNodes];
@@ -589,7 +619,12 @@ function resolvePendingGsap(
 
   const release = (item: Item): void => {
     if (gsapNodes.has(item.node)) return; // already resolved through another path
-    push(item.node, item.rootName ? `${item.rootName}.${item.method}` : item.method, item.method, item.args);
+    push(
+      item.node,
+      item.rootName ? `${item.rootName}.${item.method}` : item.method,
+      item.method,
+      item.args,
+    );
     gsapNodes.add(item.node);
     nodeQueue.push(item.node);
     const local = declaredFrom.get(item.node);

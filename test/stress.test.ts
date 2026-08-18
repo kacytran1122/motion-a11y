@@ -38,7 +38,9 @@ describe("malformed and hostile input", () => {
       for (const filename of ["a.ts", "a.tsx", "a.js", "a.mjs", "noext"]) {
         const result = lint(code, { filename });
         expect(Array.isArray(result.messages)).toBe(true);
-        expect(result.errorCount).toBe(result.messages.filter((m) => m.severity === "error").length);
+        expect(result.errorCount).toBe(
+          result.messages.filter((m) => m.severity === "error").length,
+        );
         for (const message of result.messages) {
           expect(message.line).toBeGreaterThanOrEqual(1);
           expect(message.column).toBeGreaterThanOrEqual(1);
@@ -92,7 +94,7 @@ describe("pathological shapes", () => {
 
   it("resolves a long chain of timelines held in locals", () => {
     const links = 300;
-    const lines = ["import gsap from \"gsap\";", "const t0 = gsap.timeline();"];
+    const lines = ['import gsap from "gsap";', "const t0 = gsap.timeline();"];
     for (let i = 1; i < links; i++) lines.push(`const t${i} = t${i - 1}.timeline();`);
     // Declared last, used against the first local, so order cannot be relied on.
     lines.push(`t${links - 1}.to(".a", { x: 1, duration: 12 });`);
@@ -106,7 +108,9 @@ describe("pathological shapes", () => {
       export function play() { tl.to(".a", { x: 1, duration: 12 }); }
       const tl = gsap.timeline();
     `;
-    expect(lint(code, { filename: "a.ts" }).messages.map((m) => m.rule)).toContain("no-long-animation");
+    expect(lint(code, { filename: "a.ts" }).messages.map((m) => m.rule)).toContain(
+      "no-long-animation",
+    );
   });
 
   it("handles many sibling animations", () => {

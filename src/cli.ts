@@ -3,6 +3,8 @@ import { createRequire } from "node:module";
 import { readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join, relative, resolve, sep } from "node:path";
+import { loadConfig, readIgnoreFile, type Config } from "./config.js";
+import { Ignorer, parseIgnoreFile, parseIgnorePattern, type IgnoreRule } from "./ignore.js";
 import { isRuleId, isSeverity, lint, presets, RULE_IDS } from "./index.js";
 import { formatGithub, formatJson, formatPretty } from "./format.js";
 import type { LintResult, PresetName, RuleId, Severity } from "./types.js";
@@ -44,7 +46,11 @@ Options
   --format <name>     pretty (default), json or github
   --ext <list>        Comma separated extensions. Default: ${DEFAULT_EXTENSIONS.join(",")}
   --max-warnings <n>  Exit 1 when warnings exceed n. Default: unlimited
+  --ignore <glob>     Skip paths matching a glob. Repeatable.
+  --config <path>     Read settings from this JSON file
+  --no-config         Ignore any config file on disk
   --no-prefilter      Parse every file, even ones with no animation code
+  --allow-unchecked   Exit 0 even when a file could not be parsed
   --quiet             Only report errors
   --rules             List every rule and exit
   --version           Print the version and exit
@@ -54,6 +60,16 @@ Examples
   npx motion-a11y src
   npx motion-a11y src --preset strict --format github
   npx motion-a11y src --rule no-smooth-scroll=off
+  npx motion-a11y src --ignore "src/generated/**"
+
+Settings can also live in motion-a11y.config.json, .motion-a11yrc.json, or a
+"motion-a11y" key in package.json. Paths in .motion-a11yignore are skipped.
+Command line options win over the config file.
+
+Suppress a finding in place:
+  // motion-a11y-disable-next-line no-infinite-animation
+  // motion-a11y-disable-line
+  /* motion-a11y-disable */ ... /* motion-a11y-enable */
 
 This checks JavaScript and TypeScript, where animation libraries live.
 Plain CSS keyframes are covered by stylelint-a11y. Run both.
@@ -61,13 +77,17 @@ Plain CSS keyframes are covered by stylelint-a11y. Run both.
 
 interface Cli {
   paths: string[];
-  preset: PresetName;
+  preset?: PresetName;
   rules: Partial<Record<RuleId, Severity>>;
   format: "pretty" | "json" | "github";
-  extensions: string[];
-  maxWarnings: number;
-  quiet: boolean;
+  extensions?: string[];
+  maxWarnings?: number;
+  ignore: string[];
+  configPath?: string;
+  useConfig: boolean;
+  quiet?: boolean;
   prefilter: boolean;
+  allowUnchecked: boolean;
 }
 
 class UsageError extends Error {}
@@ -84,13 +104,12 @@ export function parseArgs(
 ): Cli | { help: true } | { listRules: true } | { version: true } {
   const cli: Cli = {
     paths: [],
-    preset: "recommended",
     rules: {},
     format: "pretty",
-    extensions: DEFAULT_EXTENSIONS,
-    maxWarnings: Number.POSITIVE_INFINITY,
-    quiet: false,
+    ignore: [],
+    useConfig: true,
     prefilter: true,
+    allowUnchecked: false,
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -110,6 +129,26 @@ export function parseArgs(
       case "--no-prefilter":
         cli.prefilter = false;
         break;
+      case "--allow-unchecked":
+        cli.allowUnchecked = true;
+        break;
+      case "--no-config":
+        cli.useConfig = false;
+        break;
+      case "--config":
+        cli.configPath = requireValue(argv, ++i, "--config");
+        break;
+      case "--ignore": {
+        const value = requireValue(argv, ++i, "--ignore");
+        try {
+          if (!parseIgnorePattern(value))
+            throw new UsageError(`--ignore needs a pattern, got: ${value}`);
+        } catch (error) {
+          throw new UsageError(error instanceof Error ? error.message : String(error));
+        }
+        cli.ignore.push(value);
+        break;
+      }
       case "--preset": {
         const value = requireValue(argv, ++i, "--preset");
         if (value !== "recommended" && value !== "strict") {
@@ -176,13 +215,27 @@ export function parseArgs(
  * de-duplicating so that overlapping arguments (`motion-a11y src src/App.tsx`)
  * do not lint the same file twice.
  */
-export function findFiles(roots: string[], extensions: string[]): string[] {
+export function findFiles(
+  roots: string[],
+  extensions: string[],
+  ignorer: Ignorer = new Ignorer([]),
+  base: string = process.cwd(),
+): string[] {
   const found = new Set<string>();
   const seenDirs = new Set<string>();
   const queue: string[] = [];
 
   const matches = (name: string): boolean =>
     !GENERATED_FILE.test(name) && extensions.some((ext) => name.endsWith(ext));
+
+  // Ignore patterns are written against the project, so they are matched on
+  // the path relative to it, with forward slashes on every platform.
+  const ignored = (full: string, isDirectory: boolean): boolean => {
+    if (ignorer.size === 0) return false;
+    const rel = relative(base, full);
+    if (rel === "" || rel.startsWith(`..${sep}`)) return false;
+    return ignorer.matches(rel.split(sep).join("/"), isDirectory);
+  };
 
   for (const root of roots) {
     let stats;
@@ -191,10 +244,15 @@ export function findFiles(roots: string[], extensions: string[]): string[] {
     } catch {
       throw new UsageError(`Cannot read path: ${root}`);
     }
-    // An explicitly named file is linted whatever it is called.
-    if (stats.isFile()) found.add(root);
-    else if (stats.isDirectory()) queue.push(root);
-    else throw new UsageError(`Not a file or directory: ${root}`);
+    // An ignore rule applies even to a path named on the command line, so that
+    // `motion-a11y .` and `motion-a11y generated` agree with each other.
+    if (stats.isFile()) {
+      if (!ignored(root, false)) found.add(root);
+    } else if (stats.isDirectory()) {
+      if (!ignored(root, true)) queue.push(root);
+    } else {
+      throw new UsageError(`Not a file or directory: ${root}`);
+    }
   }
 
   while (queue.length > 0) {
@@ -221,9 +279,10 @@ export function findFiles(roots: string[], extensions: string[]): string[] {
       const full = join(dir, entry.name);
       if (entry.isDirectory()) {
         if (SKIP_DIRS.has(entry.name) || entry.name.startsWith(".")) continue;
+        if (ignored(full, true)) continue;
         queue.push(full);
       } else if (entry.isFile()) {
-        if (matches(entry.name)) found.add(full);
+        if (matches(entry.name) && !ignored(full, false)) found.add(full);
       } else if (entry.isSymbolicLink()) {
         // Resolve the link so that symlinked source trees are still linted.
         let target;
@@ -233,8 +292,10 @@ export function findFiles(roots: string[], extensions: string[]): string[] {
           continue; // broken link
         }
         if (target.isDirectory()) {
-          if (!SKIP_DIRS.has(entry.name) && !entry.name.startsWith(".")) queue.push(full);
-        } else if (target.isFile() && matches(entry.name)) {
+          if (!SKIP_DIRS.has(entry.name) && !entry.name.startsWith(".") && !ignored(full, true)) {
+            queue.push(full);
+          }
+        } else if (target.isFile() && matches(entry.name) && !ignored(full, false)) {
           found.add(full);
         }
       }
@@ -275,9 +336,48 @@ export function run(argv: string[]): number {
   }
 
   const cli = parsed;
+  const cwd = process.cwd();
+
+  let config: Config = {};
+  try {
+    if (cli.useConfig || cli.configPath) {
+      config = loadConfig(cwd, cli.configPath).config;
+    }
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    return 2;
+  }
+
+  // Command line beats config file, which beats the built in default.
+  const preset = cli.preset ?? config.preset ?? "recommended";
+  const rules = { ...config.rules, ...cli.rules };
+  const extensions = cli.extensions ?? config.extensions ?? DEFAULT_EXTENSIONS;
+  const maxWarnings = cli.maxWarnings ?? config.maxWarnings ?? Number.POSITIVE_INFINITY;
+  const quiet = cli.quiet ?? config.quiet ?? false;
+
+  let ignorer: Ignorer;
+  try {
+    const ignoreRules: IgnoreRule[] = [];
+    const ignoreFile = cli.useConfig ? readIgnoreFile(cwd) : null;
+    if (ignoreFile) ignoreRules.push(...parseIgnoreFile(ignoreFile));
+    for (const pattern of [...(config.ignore ?? []), ...cli.ignore]) {
+      const rule = parseIgnorePattern(pattern);
+      if (rule) ignoreRules.push(rule);
+    }
+    ignorer = new Ignorer(ignoreRules);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    return 2;
+  }
+
   let files: string[];
   try {
-    files = findFiles(cli.paths.map((path) => resolve(path)), cli.extensions);
+    files = findFiles(
+      cli.paths.map((path) => resolve(path)),
+      extensions,
+      ignorer,
+      cwd,
+    );
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     return 2;
@@ -296,6 +396,7 @@ export function run(argv: string[]): number {
         messages: [],
         errorCount: 0,
         warningCount: 0,
+        suppressedCount: 0,
         guarded: false,
         parseError: `Could not read the file. ${error instanceof Error ? error.message : String(error)}`,
       });
@@ -304,11 +405,11 @@ export function run(argv: string[]): number {
 
     const result = lint(code, {
       filename,
-      preset: cli.preset,
-      rules: cli.rules,
+      preset,
+      rules,
       prefilter: cli.prefilter,
     });
-    if (cli.quiet) {
+    if (quiet) {
       result.messages = result.messages.filter((m) => m.severity === "error");
       result.warningCount = 0;
     }
@@ -325,11 +426,25 @@ export function run(argv: string[]): number {
 
   let errors = 0;
   let warnings = 0;
+  let unchecked = 0;
   for (const result of results) {
     errors += result.errorCount;
     warnings += result.warningCount;
+    if (result.parseError ?? result.analysisError) unchecked++;
   }
-  return errors > 0 || warnings > cli.maxWarnings ? 1 : 0;
+
+  // A file the linter could not read is not a file that passed. Reporting
+  // success here is how an unchecked file slips through a CI gate, so it fails
+  // by default, the same way ESLint treats a parse error.
+  if (unchecked > 0 && !cli.allowUnchecked) {
+    console.error(
+      `${unchecked} file${unchecked === 1 ? "" : "s"} could not be checked. ` +
+        `Fix them, ignore them, or pass --allow-unchecked.`,
+    );
+    return 1;
+  }
+
+  return errors > 0 || warnings > maxWarnings ? 1 : 0;
 }
 
 /**
