@@ -148,6 +148,9 @@ for (const message of result.messages) {
 Neither `lint` nor the CLI throws on a bad file. One unreadable or unparseable
 file is reported against that file and the rest of the run continues.
 
+If you have already parsed the file with `@babel/parser`, `lintAst(ast, source, options)`
+skips the second parse and returns the same result.
+
 ## What it does not do
 
 Being clear about the limits is what makes a linter worth keeping installed.

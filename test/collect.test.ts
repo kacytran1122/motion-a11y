@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, it } from "node:test";
+import { expect } from "./expect.js";
 import { lint } from "../src/index.js";
 import type { RuleId } from "../src/types.js";
 

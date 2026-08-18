@@ -1,4 +1,5 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { describe, it, before, after } from "node:test";
+import { expect } from "./expect.js";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -17,7 +18,7 @@ if (!built && process.env.CI) {
 
 let project: string;
 
-beforeAll(() => {
+before(() => {
   project = mkdtempSync(join(tmpdir(), "motion-a11y-e2e-"));
   mkdirSync(join(project, "src"), { recursive: true });
   writeFileSync(
@@ -43,7 +44,7 @@ beforeAll(() => {
   }
 });
 
-afterAll(() => {
+after(() => {
   rmSync(project, { recursive: true, force: true });
 });
 
@@ -68,7 +69,7 @@ function runCli(args: string[], cwd = project): Run {
   }
 }
 
-describe.skipIf(!built)("cli end to end", () => {
+describe("cli end to end", { skip: !built }, () => {
   it("exits 1 and reports findings when there are errors", () => {
     const run = runCli(["src"]);
     expect(run.status).toBe(1);

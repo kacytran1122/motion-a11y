@@ -1,4 +1,4 @@
-import { createLocator, parseFile } from "./ast.js";
+import { createLocator, parseFile, type Node } from "./ast.js";
 import { collect, mightAnimate } from "./collect.js";
 import { runRules } from "./rules.js";
 import type {
@@ -146,8 +146,6 @@ export function lint(code: string, options: LintOptions = {}): LintResult {
   // parsing is the expensive part. In a real repository most files land here.
   if (options.prefilter !== false && !mightAnimate(code)) return EMPTY_RESULT(filename);
 
-  const severities = resolveSeverities(options);
-
   let ast;
   try {
     ast = parseFile(code, filename);
@@ -157,6 +155,20 @@ export function lint(code: string, options: LintOptions = {}): LintResult {
       parseError: error instanceof Error ? error.message : String(error),
     };
   }
+
+  return lintAst(ast, code, options);
+}
+
+/**
+ * Lints an already parsed Babel AST.
+ *
+ * Exported so a caller that has parsed the file for other reasons does not have
+ * to parse it twice. `code` is only read to resolve positions for the rare node
+ * that carries none, so passing the original source is enough.
+ */
+export function lintAst(ast: Node, code: string, options: LintOptions = {}): LintResult {
+  const filename = options.filename ?? "input.tsx";
+  const severities = resolveSeverities(options);
 
   let context;
   let findings;

@@ -1,4 +1,5 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { describe, it, before, after } from "node:test";
+import { expect } from "./expect.js";
 import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,7 +7,7 @@ import { findFiles, parseArgs } from "../src/cli.js";
 
 let root: string;
 
-beforeAll(() => {
+before(() => {
   root = mkdtempSync(join(tmpdir(), "motion-a11y-cli-"));
   mkdirSync(join(root, "src"), { recursive: true });
   mkdirSync(join(root, "src", "nested"), { recursive: true });
@@ -22,7 +23,7 @@ beforeAll(() => {
   writeFileSync(join(root, ".hidden", "secret.ts"), `export const s = 1;\n`);
 });
 
-afterAll(() => {
+after(() => {
   rmSync(root, { recursive: true, force: true });
 });
 

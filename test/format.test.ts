@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, it } from "node:test";
+import { expect } from "./expect.js";
 import { formatGithub, formatJson, formatPretty } from "../src/format.js";
 import type { LintResult, Message } from "../src/types.js";
 

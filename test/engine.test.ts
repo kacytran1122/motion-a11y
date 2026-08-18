@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, it } from "node:test";
+import { expect } from "./expect.js";
 import { isRuleId, isSeverity, lint, mightAnimate, presets, RULE_IDS } from "../src/index.js";
 import { parseFile } from "../src/ast.js";
 import { collect } from "../src/collect.js";

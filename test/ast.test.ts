@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, it, mock } from "node:test";
+import { expect } from "./expect.js";
 import {
   booleanValue,
   calleeName,
@@ -205,7 +206,7 @@ describe("walk", () => {
   });
 
   it("ignores a non-node root", () => {
-    const visit = vi.fn();
+    const visit = mock.fn();
     walk(null, visit);
     walk(42, visit);
     walk({ notANode: true }, visit);
