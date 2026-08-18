@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>motion-a11y — the accessibility linter for animation code</title>
-<meta name="description" content="Nothing checks your animation code for accessibility. eslint reads JSX, stylelint reads CSS, axe reads the rendered page. motion-a11y reads the JavaScript, where Framer Motion, GSAP, Lottie and the Web Animations API live.">
+<title>motion-a11y — find animations that make people dizzy or sick</title>
+<meta name="description" content="Some animations make people dizzy, and some can trigger seizures. Your other accessibility tools cannot see them. motion-a11y reads your JavaScript and tells you before you ship.">
 <meta name="theme-color" content="#131019">
 <meta property="og:type" content="website">
 <meta property="og:title" content="motion-a11y — the accessibility linter for animation code">
@@ -43,6 +43,40 @@ body{
   font-family:var(--body);font-size:17px;line-height:1.6;
   -webkit-font-smoothing:antialiased;
 }
+/* ---------- background video ----------
+   Decorative only. It sits behind the ambient grid, under a heavy scrim so
+   every bit of text keeps its contrast, and it obeys the same motion
+   preference this whole site is about. */
+.bg-video{
+  position:fixed;inset:0;width:100%;height:100%;object-fit:cover;
+  z-index:-2;pointer-events:none;opacity:0;transition:opacity .6s ease;
+}
+.bg-video.on{opacity:1}
+.bg-scrim{
+  position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:
+    radial-gradient(120% 80% at 50% 0%,rgba(19,16,25,.62) 0%,rgba(19,16,25,.88) 60%,var(--void) 100%),
+    linear-gradient(rgba(19,16,25,.72),rgba(19,16,25,.86));
+}
+/* The pause control the linter would ask any site for. */
+.motion-toggle{
+  position:fixed;right:16px;bottom:16px;z-index:60;
+  display:inline-flex;align-items:center;gap:8px;
+  padding:9px 15px;border-radius:999px;cursor:pointer;
+  font-family:var(--body);font-size:13px;font-weight:600;
+  color:var(--ink);background:rgba(27,23,36,.92);border:1px solid var(--line);
+  backdrop-filter:blur(10px);
+}
+.motion-toggle:hover{border-color:var(--violet)}
+.motion-toggle .glyph{
+  width:9px;height:10px;flex:none;background:currentColor;
+  clip-path:polygon(0 0,3px 0,3px 10px,0 10px,0 0,6px 0,9px 0,9px 10px,6px 10px);
+}
+.motion-toggle[aria-pressed="true"] .glyph{clip-path:polygon(0 0,9px 5px,0 10px)}
+@media(max-width:640px){
+  .motion-toggle{right:12px;bottom:12px;padding:8px 12px;font-size:12px}
+}
+
 /* Ambient grid, the graph paper an instrument is read against. */
 body::before{
   content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
@@ -287,23 +321,32 @@ footer a:hover{color:var(--ink)}
   </div>
 </header>
 
+<video class="bg-video" id="bg-video" muted loop playsinline preload="auto"
+       aria-hidden="true" tabindex="-1" disablepictureinpicture>
+  <source src="motion.mp4" type="video/mp4">
+</video>
+<div class="bg-scrim"></div>
+
+<button class="motion-toggle" id="motion-toggle" type="button" aria-pressed="false">
+  <span class="glyph" aria-hidden="true"></span><span id="motion-toggle-label">Pause background</span>
+</button>
+
 <main id="top">
 
 <!-- ============ HERO ============ -->
 <section class="wrap hero">
-  <div class="eyebrow">Accessibility linting for animation code</div>
-  <h1>Your linter reads<br>your JSX. It never<br>reads your <span class="strike">motion</span>.</h1>
+  <div class="eyebrow">An accessibility checker for animation code</div>
+  <h1>Your linter checks<br>your HTML. It never<br>checks your <span class="strike">motion</span>.</h1>
   <p class="lede">
-    Animation is the one part of the front end that nothing checks. ESLint reads JSX attributes,
-    so it cannot see a GSAP timeline. Stylelint reads CSS, so it cannot see <code>repeat: Infinity</code>
-    inside a JavaScript object. Axe runs against a rendered page, so it cannot see an animation that
-    has not started yet.
+    Some animations make people dizzy. Some flash fast enough to trigger a seizure. Your usual
+    accessibility tools miss both, because they do not look where animation lives: ESLint reads
+    HTML attributes, Stylelint reads CSS, and Axe only sees the page once it has loaded.
   </p>
-  <p class="lede">motion-a11y reads the JavaScript. That is where the animation actually lives.</p>
+  <p class="lede">motion-a11y reads your JavaScript, finds the risky animations, and names the problem.</p>
 
   <div class="hero-actions">
-    <a class="btn btn-primary" href="#run">Start linting</a>
-    <a class="btn btn-ghost" href="https://github.com/kacytran1122/motion-a11y">Read the source</a>
+    <a class="btn btn-primary" href="#run">Get started</a>
+    <a class="btn btn-ghost" href="https://github.com/kacytran1122/motion-a11y">See the code</a>
   </div>
 
   <div class="install">
@@ -314,8 +357,8 @@ footer a:hover{color:var(--ink)}
   <!-- ---------- SIGNATURE: flash rate meter ---------- -->
   <div class="meter" id="meter">
     <div class="meter-head">
-      <span class="meter-title">Flash rate meter</span>
-      <span class="safe-note"><span class="dot"></span>Nothing on this page flashes. The rate is shown as a number and a bar, never played back.</span>
+      <span class="meter-title">How fast is too fast?</span>
+      <span class="safe-note"><span class="dot"></span>Safe to try. Nothing here flashes — you only see the speed as a number and a bar.</span>
     </div>
 
     <div class="meter-body">
@@ -331,23 +374,23 @@ footer a:hover{color:var(--ink)}
             <div class="fill bad" id="fill"></div>
             <div class="threshold"></div>
           </div>
-          <div class="ticks"><span>0</span><span>3</span><span>6</span><span>9</span><span>12 Hz</span></div>
+          <div class="ticks"><span>0</span><span>3</span><span>6</span><span>9</span><span>12/sec</span></div>
         </div>
 
         <div class="control">
-          <label for="dur">Animation duration<b><span id="durval">120</span> ms per cycle</b></label>
+          <label for="dur">Drag to change the speed<b><span id="durval">120</span> ms per flash</b></label>
           <input type="range" id="dur" min="60" max="1200" step="10" value="120"
-                 aria-describedby="hz" aria-label="Animation duration in milliseconds per cycle">
+                 aria-describedby="hz" aria-label="Milliseconds per flash">
         </div>
       </div>
 
       <div class="meter-right">
         <div>
-          <div class="snippet-label">The code</div>
+          <div class="snippet-label">Your code</div>
           <pre id="code"></pre>
         </div>
         <div>
-          <div class="snippet-label">What motion-a11y says</div>
+          <div class="snippet-label">What you would be told</div>
           <div class="out" id="out"></div>
         </div>
       </div>
@@ -358,19 +401,19 @@ footer a:hover{color:var(--ink)}
 <!-- ============ STATS ============ -->
 <section class="stats">
   <div class="stat"><div class="n">7</div><div class="l">Rules</div></div>
-  <div class="stat"><div class="n">3 Hz</div><div class="l">Hard flash limit</div></div>
-  <div class="stat"><div class="n">305M</div><div class="l">Monthly installs covered</div></div>
+  <div class="stat"><div class="n">3/sec</div><div class="l">The flash limit</div></div>
+  <div class="stat"><div class="n">305M</div><div class="l">Installs a month it covers</div></div>
   <div class="stat"><div class="n">MIT</div><div class="l">Open source</div></div>
 </section>
 
 <!-- ============ WHY ============ -->
 <section class="wrap section" id="compare">
-  <div class="eyebrow reveal">Why a separate linter</div>
+  <div class="eyebrow reveal">Why you need a separate tool</div>
   <h2 class="reveal" style="font-size:clamp(28px,4.4vw,46px)">Three good tools.<br>One gap between them.</h2>
   <p class="lede reveal">
-    Every tool below is worth using. None of them can see animation code, because animation does not
-    live where they look. This table is the honest version: stylelint already covers CSS keyframes,
-    and motion-a11y does not try to take that over.
+    Every tool below is worth using. None of them can see your animations, because animations are
+    not written where those tools look. Here is the honest version: Stylelint already handles
+    animation written in CSS, and motion-a11y leaves that to it.
   </p>
 
   <div class="table-scroll reveal">
@@ -386,27 +429,27 @@ footer a:hover{color:var(--ink)}
       </thead>
       <tbody>
         <tr>
-          <td>CSS keyframes with no reduced motion guard</td>
+          <td>CSS animation that ignores the "less motion" setting</td>
           <td class="no">No</td><td class="yes">Yes</td><td class="no">No</td><td class="mine no">Use stylelint</td>
         </tr>
         <tr>
-          <td>Framer Motion <code>animate</code> with no guard</td>
+          <td>Framer Motion that ignores the "less motion" setting</td>
           <td class="no">No</td><td class="no">No</td><td class="no">No</td><td class="mine yes">Yes</td>
         </tr>
         <tr>
-          <td>GSAP timeline with <code>repeat: -1</code></td>
+          <td>A GSAP animation set to repeat forever</td>
           <td class="no">No</td><td class="no">No</td><td class="no">No</td><td class="mine yes">Yes</td>
         </tr>
         <tr>
-          <td>Flash rate above 3 per second</td>
+          <td>Anything flashing more than 3 times a second</td>
           <td class="no">No</td><td class="no">No</td><td class="part">Manual review</td><td class="mine yes">Yes</td>
         </tr>
         <tr>
-          <td>Scroll linked motion, the top vestibular trigger</td>
+          <td>Motion tied to scrolling, the biggest cause of dizziness</td>
           <td class="no">No</td><td class="no">No</td><td class="no">No</td><td class="mine yes">Yes</td>
         </tr>
         <tr>
-          <td>Autoplaying Lottie on page load</td>
+          <td>A Lottie animation that plays the moment the page opens</td>
           <td class="no">No</td><td class="no">No</td><td class="no">No</td><td class="mine yes">Yes</td>
         </tr>
         <tr>
@@ -422,25 +465,25 @@ footer a:hover{color:var(--ink)}
   </div>
 
   <p class="lede reveal" style="margin-top:22px">
-    Framer Motion, Motion, GSAP and the Lottie players are installed over 300 million times a month
-    between them. Not one of those installs comes with a guardrail.
+    Together, these animation libraries are downloaded over 300 million times a month.
+    Not one of them warns you when an animation could hurt someone.
   </p>
 </section>
 
 <!-- ============ RULES ============ -->
 <section class="wrap section" id="rules">
   <div class="eyebrow reveal">The seven rules</div>
-  <h2 class="reveal" style="font-size:clamp(28px,4.4vw,46px)">Each one maps to a<br>real WCAG criterion.</h2>
+  <h2 class="reveal" style="font-size:clamp(28px,4.4vw,46px)">Every rule comes from<br>a real WCAG standard.</h2>
   <p class="lede reveal">
-    No style opinions and no taste calls. Every rule points at a published success criterion, so a
-    finding is something you can take to a product manager rather than an argument about polish.
+    No opinions about style, and no arguments about taste. Every rule points at a published
+    accessibility standard, so you can show your team a rule instead of a preference.
   </p>
 
   <div class="rules">
 
     <article class="rule-card reveal">
       <div class="rule-top"><span class="rule-name">require-reduced-motion-guard</span><span class="sev error">error</span></div>
-      <p>The file animates but never checks whether the reader asked for less motion. Reported once per file, not once per call, so it stays readable.</p>
+      <p>This file animates something, but never checks whether the visitor asked for less motion. Reported once per file rather than once per line, so the output stays short.</p>
       <pre><span class="tok-com">// no useReducedMotion anywhere in this file</span>
 &lt;motion.div <span class="tok-key">animate</span>={{ <span class="tok-key">x</span>: <span class="tok-num">200</span> }} /&gt;</pre>
       <div class="wcag">WCAG 2.3.3 Animation from Interactions</div>
@@ -448,7 +491,7 @@ footer a:hover{color:var(--ink)}
 
     <article class="rule-card flag reveal">
       <div class="rule-top"><span class="rule-name">no-fast-flash</span><span class="sev error">error</span></div>
-      <p>A repeating animation changes opacity or colour more than three times a second. This rule still fires in a file that has a reduced motion guard. See below for why.</p>
+      <p>Something fades or changes colour more than three times a second. This is the one rule that still reports even when the file does check the motion setting. See below for why.</p>
       <pre>el.<span class="tok-key">animate</span>([{ <span class="tok-key">opacity</span>: <span class="tok-num">0</span> }, { <span class="tok-key">opacity</span>: <span class="tok-num">1</span> }], {
   <span class="tok-key">duration</span>: <span class="tok-num">120</span>, <span class="tok-key">iterations</span>: Infinity
 });</pre>
@@ -457,7 +500,7 @@ footer a:hover{color:var(--ink)}
 
     <article class="rule-card reveal">
       <div class="rule-top"><span class="rule-name">no-infinite-animation</span><span class="sev error">error</span></div>
-      <p>Motion that repeats forever with no way to stop it. Passes if the file exposes a pause control, because that is what the criterion actually asks for.</p>
+      <p>Motion that repeats forever with no way to stop it. Add a pause button and it passes, because that is exactly what the standard asks for.</p>
       <pre>gsap.<span class="tok-key">to</span>(<span class="tok-str">".pulse"</span>, {
   <span class="tok-key">scale</span>: <span class="tok-num">1.1</span>, <span class="tok-key">repeat</span>: <span class="tok-num">-1</span>
 });</pre>
@@ -466,21 +509,21 @@ footer a:hover{color:var(--ink)}
 
     <article class="rule-card reveal">
       <div class="rule-top"><span class="rule-name">no-scroll-linked-animation</span><span class="sev warn">warn</span></div>
-      <p>Motion tied to scroll position. About 35 percent of adults over 40 have some vestibular dysfunction, and scroll driven parallax is the strongest trigger on the web.</p>
+      <p>Motion that follows the scroll bar. Roughly 35 out of every 100 adults over 40 have an inner-ear condition, and scroll-driven parallax is the single worst trigger for it.</p>
       <pre><span class="tok-key">const</span> { scrollYProgress } = <span class="tok-key">useScroll</span>();</pre>
       <div class="wcag">WCAG 2.3.3 Animation from Interactions</div>
     </article>
 
     <article class="rule-card reveal">
       <div class="rule-top"><span class="rule-name">no-long-animation</span><span class="sev warn">warn</span></div>
-      <p>An animation runs longer than five seconds with no pause control. Durations are read in the unit each library uses: seconds for GSAP and Motion, milliseconds for the Web Animations API.</p>
+      <p>An animation runs for more than five seconds with no way to pause it. Each library measures time differently, so seconds and milliseconds are both read correctly.</p>
       <pre>gsap.<span class="tok-key">to</span>(<span class="tok-str">".hero"</span>, { <span class="tok-key">x</span>: <span class="tok-num">400</span>, <span class="tok-key">duration</span>: <span class="tok-num">12</span> });</pre>
       <div class="wcag">WCAG 2.2.2 Pause, Stop, Hide</div>
     </article>
 
     <article class="rule-card reveal">
       <div class="rule-top"><span class="rule-name">no-smooth-scroll</span><span class="sev warn">warn</span></div>
-      <p>A smooth scroll request with no fallback. Catches the options object and the property assignment, including when the call sits in the middle of a chain.</p>
+      <p>A smooth scrolling jump with nothing to fall back on. Found however you write it, including in the middle of a chain of calls.</p>
       <pre>document.<span class="tok-key">querySelector</span>(<span class="tok-str">"#top"</span>)
   .<span class="tok-key">scrollIntoView</span>({ <span class="tok-key">behavior</span>: <span class="tok-str">"smooth"</span> });</pre>
       <div class="wcag">WCAG 2.3.3 Animation from Interactions</div>
@@ -488,14 +531,14 @@ footer a:hover{color:var(--ink)}
 
     <article class="rule-card reveal">
       <div class="rule-top"><span class="rule-name">no-autoplay-lottie</span><span class="sev warn">warn</span></div>
-      <p>A Lottie player starts on load. Covers the React components and <code>lottie-web</code>'s <code>loadAnimation</code>, including a bare <code>autoplay</code> attribute.</p>
+      <p>A Lottie animation starts playing on its own. Covers the React components and <code>lottie-web</code>, including a bare <code>autoplay</code> attribute.</p>
       <pre>&lt;Lottie <span class="tok-key">animationData</span>={data} loop autoplay /&gt;</pre>
       <div class="wcag">WCAG 2.2.2 Pause, Stop, Hide</div>
     </article>
 
     <article class="rule-card reveal" style="border-style:dashed">
       <div class="rule-top"><span class="rule-name">Two presets</span></div>
-      <p><code>recommended</code> is the default and mixes errors with warnings. <code>strict</code> makes every rule an error. Any single rule can be turned off or changed.</p>
+      <p><code>recommended</code> is the default: some rules fail the check, others only warn. <code>strict</code> makes every rule fail. You can change or switch off any rule.</p>
       <pre>motion-a11y src <span class="tok-key">--preset</span> strict
 motion-a11y src <span class="tok-key">--rule</span> no-smooth-scroll=off</pre>
       <div class="wcag">Run motion-a11y --rules to print the table</div>
@@ -507,35 +550,34 @@ motion-a11y src <span class="tok-key">--rule</span> no-smooth-scroll=off</pre>
 <!-- ============ FLASH RULE EXPLAINER ============ -->
 <section class="wrap section">
   <div class="eyebrow reveal">One deliberate exception</div>
-  <h2 class="reveal" style="font-size:clamp(26px,4vw,42px);max-width:20ch">The flash rule ignores your reduced motion guard.</h2>
+  <h2 class="reveal" style="font-size:clamp(26px,4vw,42px);max-width:20ch">The flash rule ignores your motion setting.</h2>
   <p class="lede reveal">
-    Every other rule goes quiet once the file respects the reader's motion preference. <code>no-fast-flash</code>
-    does not, and that is on purpose.
+    Every other rule goes quiet once your file respects the visitor's motion setting.
+    <code>no-fast-flash</code> does not, and that is on purpose.
   </p>
   <p class="lede reveal">
-    Most people who are photosensitive have never opened their operating system settings and switched
-    reduced motion on. Many do not know the setting exists. A seizure risk is not a preference to
-    respect, so the rule asks you to fix the flash rate itself rather than hide it behind a media
-    query. If you disagree for a specific file, turn the rule off explicitly. That is a decision
-    somebody made, which is the point.
+    Most people who are sensitive to flashing have never turned that setting on, and many do not
+    know it exists. A seizure risk is not a preference to honour, so the rule asks you to slow the
+    flashing down rather than hide it behind a setting. If you disagree about one file, switch the
+    rule off there by hand. Then it is a decision somebody made and can be reviewed.
   </p>
 </section>
 
 <!-- ============ GUARDS ============ -->
 <section class="wrap section">
-  <div class="eyebrow reveal">Guard detection</div>
-  <h2 class="reveal" style="font-size:clamp(26px,4vw,42px)">What counts as checking<br>the motion preference</h2>
+  <div class="eyebrow reveal">How it spots your check</div>
+  <h2 class="reveal" style="font-size:clamp(26px,4vw,42px)">What counts as asking<br>for the motion setting</h2>
 
   <div class="guards">
     <div>
       <p class="lede reveal" style="margin-top:0">
-        A file is treated as guarded when any of these appear. Guards are read from the syntax tree
-        rather than the raw text, so a mention inside a comment does not silence anything.
+        Your file passes if any of these appear in it. They are read from the real structure of your
+        code, not by searching the text, so writing one in a comment will not fool it.
       </p>
       <p class="lede reveal">
-        Guards are checked per file, not per branch. A file with a guard in one function and an
-        unguarded animation in another will pass. That is a deliberate trade. False positives are the
-        fastest way to get a linter switched off, and a rule nobody runs catches nothing.
+        The check is per file, not per function. So a file that checks the setting in one place and
+        animates without it somewhere else still passes. That is on purpose: false alarms are the
+        fastest way to get a tool switched off, and a tool nobody runs finds nothing.
       </p>
     </div>
     <ul class="guard-list reveal">
@@ -552,13 +594,13 @@ motion-a11y src <span class="tok-key">--rule</span> no-smooth-scroll=off</pre>
 <!-- ============ RUN ============ -->
 <section class="wrap section" id="run">
   <div class="eyebrow reveal">Three ways to run it</div>
-  <h2 class="reveal" style="font-size:clamp(28px,4.4vw,46px)">Same rules.<br>Pick your surface.</h2>
+  <h2 class="reveal" style="font-size:clamp(28px,4.4vw,46px)">Same rules.<br>Pick where you want them.</h2>
 
   <div class="modes">
     <div class="mode reveal">
       <span class="mode-tag">One</span>
       <h3>On the command line</h3>
-      <p>Point it at a folder. It skips node_modules and build output on its own. Exit code is 1 when there is an error, so it drops straight into a pre-commit hook.</p>
+      <p>Point it at a folder and it does the rest. It skips node_modules and build output on its own, and it fails when it finds an error, so you can put it in a pre-commit hook.</p>
       <pre>npm i -D motion-a11y
 
 npx motion-a11y src</pre>
@@ -567,7 +609,7 @@ npx motion-a11y src</pre>
     <div class="mode reveal">
       <span class="mode-tag">Two ★</span>
       <h3>In your pull requests</h3>
-      <p>The github format prints annotations, so each finding lands inline on the diff next to the line that caused it. Reviewers see it without opening the log.</p>
+      <p>Add one line to your workflow and every problem shows up as a comment on the exact line that caused it. Reviewers see it without opening any logs.</p>
       <pre>- run: npx motion-a11y src \
     --format github</pre>
     </div>
@@ -575,7 +617,7 @@ npx motion-a11y src</pre>
     <div class="mode reveal">
       <span class="mode-tag">Three</span>
       <h3>From your own code</h3>
-      <p>Full TypeScript types, ESM and CommonJS. Parse errors come back on the result instead of throwing, so one bad file cannot take down your build script.</p>
+      <p>Full TypeScript types, and it works with both <code>import</code> and <code>require</code>. A file it cannot read is reported, never thrown, so one bad file cannot break your build.</p>
       <pre><span class="tok-key">import</span> { lint } <span class="tok-key">from</span> <span class="tok-str">"motion-a11y"</span>;
 
 <span class="tok-key">const</span> r = <span class="tok-key">lint</span>(src, {
@@ -588,24 +630,24 @@ npx motion-a11y src</pre>
 <!-- ============ LIMITS ============ -->
 <section class="wrap section">
   <div class="eyebrow reveal">What it does not do</div>
-  <h2 class="reveal" style="font-size:clamp(28px,4.4vw,46px)">A linter is only worth<br>keeping if it is honest.</h2>
+  <h2 class="reveal" style="font-size:clamp(28px,4.4vw,46px)">A tool is only worth<br>keeping if it is honest.</h2>
 
   <div class="limits">
     <div class="limit reveal">
       <h4>It does not read CSS</h4>
-      <p>Keyframes and transitions in a stylesheet belong to stylelint-a11y and its media-prefers-reduced-motion rule. Run both. They do not overlap.</p>
+      <p>Animation written in a stylesheet is Stylelint's job, not ours. Run both tools. They do not overlap.</p>
     </div>
     <div class="limit reveal">
-      <h4>It does not judge taste</h4>
-      <p>Only mechanical facts: rate, length, repetition, and whether a guard exists. Whether an animation feels comfortable is a human call.</p>
+      <h4>It does not judge style</h4>
+      <p>Only the things you can measure: how fast, how long, how often, and whether you checked the motion setting. Whether it feels nice is a human call.</p>
     </div>
     <div class="limit reveal">
-      <h4>Values must be literals</h4>
-      <p><code>duration: SPEED</code> cannot be resolved without running your code, so it is skipped rather than guessed at.</p>
+      <h4>Numbers must be written out</h4>
+      <p><code>duration: SPEED</code> cannot be worked out without running your code, so it is skipped rather than guessed at.</p>
     </div>
     <div class="limit reveal">
-      <h4>Guards are per file</h4>
-      <p>Not per branch or per component. This keeps false positives low, at the cost of missing a mixed file.</p>
+      <h4>It checks per file</h4>
+      <p>Not per function or per component. This keeps false alarms low, at the cost of missing a file that does both.</p>
     </div>
   </div>
 </section>
@@ -613,7 +655,7 @@ npx motion-a11y src</pre>
 <!-- ============ CTA ============ -->
 <section class="wrap cta">
   <h2>Find out what your<br>animations are doing.</h2>
-  <p class="lede" style="margin-inline:auto">One command. No config file needed to start.</p>
+  <p class="lede" style="margin-inline:auto">One command, and no setup needed to try it.</p>
   <div class="hero-actions">
     <a class="btn btn-primary" href="https://www.npmjs.com/package/motion-a11y">Get it from npm</a>
     <a class="btn btn-ghost" href="https://github.com/kacytran1122/motion-a11y">Star on GitHub</a>
@@ -633,7 +675,7 @@ npx motion-a11y src</pre>
           </svg>
           motion-a11y
         </a>
-        <p style="max-width:38ch">The accessibility linter for animation code. For everyone who gets dizzy on your landing page and closes the tab without telling you.</p>
+        <p style="max-width:38ch">An accessibility checker for animation code. For everyone who gets dizzy on your landing page and closes the tab without telling you.</p>
       </div>
       <div>
         <h5>Package</h5>
@@ -656,7 +698,7 @@ npx motion-a11y src</pre>
     </div>
     <div class="foot-bottom">
       <span>© 2026 motion-a11y · MIT</span>
-      <span>This page respects prefers-reduced-motion. Nothing here flashes.</span>
+      <span>This page follows your "less motion" setting. Nothing here flashes, and the background can be paused.</span>
     </div>
   </div>
 </footer>
@@ -669,6 +711,48 @@ npx motion-a11y src</pre>
   // including the scroll reveal. This is the same guard the linter looks for.
   var motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
   var allowMotion = !motionQuery.matches;
+
+  // ---- background video ----
+  // It is decorative, so it never plays for a reader who asked for less
+  // motion. They can still start it by hand, which is the whole point of
+  // offering a control rather than deciding for them.
+  var video = document.getElementById("bg-video");
+  var toggle = document.getElementById("motion-toggle");
+  var toggleLabel = document.getElementById("motion-toggle-label");
+
+  function showToggle(playing) {
+    toggle.setAttribute("aria-pressed", playing ? "false" : "true");
+    toggleLabel.textContent = playing ? "Pause background" : "Play background";
+  }
+
+  function startVideo() {
+    var attempt = video.play();
+    // Autoplay can be refused by the browser. That is not an error worth
+    // shouting about; the page just stays still and the button offers it.
+    if (attempt && attempt.catch) attempt.catch(function () { showToggle(false); });
+    video.classList.add("on");
+    showToggle(true);
+  }
+
+  function stopVideo() {
+    video.pause();
+    video.classList.remove("on");
+    showToggle(false);
+  }
+
+  if (allowMotion) startVideo();
+  else showToggle(false);
+
+  toggle.addEventListener("click", function () {
+    if (video.paused) startVideo();
+    else stopVideo();
+  });
+
+  // Someone can change the setting while the page is open.
+  motionQuery.addEventListener("change", function (event) {
+    if (event.matches) stopVideo();
+    else startVideo();
+  });
 
   // ---- copy the install command ----
   var copyBtn = document.getElementById("copy");
@@ -705,7 +789,7 @@ npx motion-a11y src</pre>
     hz.style.color = risky ? "var(--alarm)" : "var(--safe)";
 
     verdict.className = "verdict " + (risky ? "bad" : "ok");
-    verdict.textContent = risky ? "Seizure risk" : "Under the limit";
+    verdict.textContent = risky ? "Seizure risk" : "Safe";
 
     fill.style.width = Math.min(100, (rate / MAX_HZ) * 100) + "%";
     fill.className = "fill" + (risky ? " bad" : "");
@@ -719,13 +803,13 @@ npx motion-a11y src</pre>
     if (risky) {
       out.innerHTML =
         '<span class="lvl-error">error</span>  ' +
-        esc("el.animate repeats opacity about " + rate.toFixed(1) +
-            " times a second. Anything over 3 flashes a second is a seizure risk.") +
+        esc("This fades in and out about " + rate.toFixed(1) +
+            " times a second. Anything over 3 flashes a second can trigger a seizure.") +
         '<br><span class="rule">no-fast-flash · WCAG 2.3.1 Three Flashes or Below Threshold</span>';
     } else {
       out.innerHTML =
         '<span class="lvl-pass">pass</span>   ' +
-        esc("Flash rate is " + rate.toFixed(1) + " per second, under the 3 per second limit.") +
+        esc("This flashes " + rate.toFixed(1) + " times a second, under the limit of 3.") +
         '<br><span class="rule">no-fast-flash · nothing reported</span>';
     }
   }
