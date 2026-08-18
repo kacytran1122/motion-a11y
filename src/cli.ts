@@ -1,9 +1,12 @@
 #!/usr/bin/env node
+import { createRequire } from "node:module";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { lint, presets, RULE_IDS } from "./index.js";
 import { formatGithub, formatJson, formatPretty } from "./format.js";
 import type { LintResult, PresetName, RuleId, Severity } from "./types.js";
+
+const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
 
 const DEFAULT_EXTENSIONS = [".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts"];
 const SKIP_DIRS = new Set([
@@ -167,7 +170,7 @@ function main(): void {
     return;
   }
   if ("version" in parsed) {
-    console.log("motion-a11y");
+    console.log(`motion-a11y ${version}`);
     return;
   }
   if ("listRules" in parsed) {
