@@ -2,8 +2,8 @@
 
 **Make animations safer before someone gets hurt.**
 
-[![npm version](https://img.shields.io/npm/v/motion-a11y.svg)]
-(https://www.npmjs.com/package/motion-a11y)
+![npm version](https://img.shields.io/npm/v/motion-a11y.svg)]
+
 [![CI](https://github.com/kacytran1122/motion-a11y/actions/workflows/ci.yml/badge.svg)](https://github.com/kacytran1122/motion-a11y/actions/workflows/ci.yml)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A518-5FA04E?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
