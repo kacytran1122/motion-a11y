@@ -9,8 +9,8 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Animation can make a website feel polished. It can also make some visitors
-dizzy, nauseous, disoriented, or—in the case of fast flashing—put them at risk
-of a seizure.
+dizzy, nauseous, or disoriented. Fast flashing can also put people at risk of a
+seizure.
 
 Most teams do not mean to create these problems. They are simply hard to spot
 while building.

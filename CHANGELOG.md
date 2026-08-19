@@ -3,6 +3,13 @@
 This project follows [semantic versioning](https://semver.org). While the major
 version is `0`, a minor bump may contain a breaking change.
 
+## 0.2.3
+
+### Documentation
+
+- Made the opening explanation easier for non-technical readers to understand.
+- Removed all em dashes from the README text.
+
 ## 0.2.2
 
 ### Documentation
