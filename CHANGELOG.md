@@ -3,6 +3,13 @@
 This project follows [semantic versioning](https://semver.org). While the major
 version is `0`, a minor bump may contain a breaking change.
 
+## 0.2.1
+
+### Documentation
+
+- Rewrote the npm README in plain language so people without an accessibility
+  or technical background can understand why safer animation matters.
+
 ## 0.2.0
 
 ### Breaking

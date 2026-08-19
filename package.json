@@ -1,6 +1,6 @@
 {
   "name": "motion-a11y",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Accessibility linter for animation code. Finds motion that can trigger vestibular disorders and seizures in Framer Motion, Motion, GSAP, Lottie and the Web Animations API.",
   "keywords": [
     "a11y",
