@@ -3,6 +3,13 @@
 This project follows [semantic versioning](https://semver.org). While the major
 version is `0`, a minor bump may contain a breaking change.
 
+## 0.2.2
+
+### Documentation
+
+- Removed the npm downloads badge so the README shows only the requested npm
+  version, CI, TypeScript, Node, and MIT License badges.
+
 ## 0.2.1
 
 ### Documentation
